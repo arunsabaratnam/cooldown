@@ -44,9 +44,3 @@ To keep it, drag it into Applications:
 ```bash
 cp -R build/Cooldown.app /Applications/
 ```
-
-<div align="center">
-
-[How it works](docs/how-it-works.md)
-
-</div>
