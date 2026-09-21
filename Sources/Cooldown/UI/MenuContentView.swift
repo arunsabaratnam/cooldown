@@ -71,12 +71,11 @@ struct MenuContentView: View {
                 .frame(maxWidth: .infinity)
             }
             .controlSize(.large)
-            .disabled(!store.preparing.isEmpty || store.visibleProviders.isEmpty)
-
-            Text("Sends one short throwaway prompt now, so the 5-hour clock is already running when you sit down. It shifts the window earlier; it does not add quota, and it does not move the weekly window.")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            // Only live while the 5-hour window is still whole: there is nothing to start
+            // once the clock is running. The panel says nothing about this; the bar above
+            // already shows why, and the tooltip covers the rest.
+            .disabled(!store.canPrepare)
+            .help(store.prepareHint)
 
             ForEach(store.recentOutcomes) { outcome in
                 HStack(alignment: .top, spacing: 5) {

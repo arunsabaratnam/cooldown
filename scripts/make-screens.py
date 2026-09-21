@@ -95,7 +95,7 @@ def menu_bar_svg():
     parts.append(text(right, 17.5, clock, size=13, opacity=0.93, anchor="end"))
     right -= approx_width(clock, 13) + 14
 
-    label = "C 62%  X 41%"
+    label = "C 100%  X 100%"
     label_w = approx_width(label, 13)
     item_w = 16 + 5 + label_w + 14
     item_x = right - item_w
@@ -139,7 +139,7 @@ def menu_bar_svg():
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{w * scale}" height="{h * scale}" '
         f'viewBox="0 0 {w * scale} {h * scale}" role="img" '
-        'aria-label="The macOS menu bar with Cooldown showing 62% left for Claude and 41% for Codex">'
+        'aria-label="The macOS menu bar with Cooldown showing 100% of the 5-hour window left for Claude and Codex">'
         f'<g transform="scale({scale})">{body}</g></svg>\n'
     )
 
@@ -150,21 +150,17 @@ PANEL_W = 300
 PAD = 14
 INNER = PANEL_W - 2 * PAD
 
+# A fresh 5-hour window part-way through the week: the moment the cooldown button is
+# for, and the only moment it is live. A window that has not started has no reset time
+# to show, so those rows carry None and the app leaves the line out.
 CLAUDE = [
-    ("5-hour", 62, "in 2h 41m", GREEN),
+    ("5-hour", 100, None, GREEN),
     ("Weekly", 38, "in 3d 4h", GREEN),
     ("Weekly (large model)", 18, "in 3d 4h", ORANGE),
 ]
 CODEX = [
-    ("5-hour", 41, "in 1h 12m", GREEN),
+    ("5-hour", 100, None, GREEN),
     ("Weekly", 9, "in 5d 2h", RED),
-]
-
-HELPER = [
-    "Sends one short throwaway prompt now, so the",
-    "5-hour clock is already running when you sit",
-    "down. It shifts the window earlier; it does not",
-    "add quota, and it does not move the weekly one.",
 ]
 
 
@@ -186,8 +182,10 @@ def window_row(y, label, remaining, resets, tint):
         'fill="#FFFFFF" fill-opacity="0.13"></rect>',
         f'<rect x="{PAD}" y="{y + 15}" width="{INNER * remaining / 100:.1f}" height="6" rx="3" '
         f'fill="{tint}"></rect>',
-        text(PAD, y + 34, "resets " + resets, size=10, opacity=TERTIARY),
     ]
+    if resets is None:
+        return parts, y + 33
+    parts.append(text(PAD, y + 34, "resets " + resets, size=10, opacity=TERTIARY))
     return parts, y + 42
 
 
@@ -237,11 +235,7 @@ def panel_svg():
     parts.append(
         text(group_left + glyph_w + gap + label_w / 2, y + 19, button_label, size=13, anchor="middle")
     )
-    y += 38
-    for line in HELPER:
-        parts.append(text(PAD, y, line, size=10, opacity=TERTIARY))
-        y += 14
-    y += 2
+    y += 41
 
     parts.append(divider(y))
     y += 10

@@ -16,11 +16,13 @@ before you sit down to work.**
 It sits in the menu bar and shows what is left of each 5-hour window.
 
 <p align="center">
-  <img src="assets/menu-bar.svg" alt="The macOS menu bar with Cooldown showing 62% left for Claude and 41% for Codex">
+  <img src="assets/menu-bar.svg" alt="The macOS menu bar with Cooldown showing 100% of the 5-hour window left for Claude and Codex">
 </p>
 
 Click it for every window, how long until each one comes back, and one button that
-starts the 5-hour cooldown early so it is already running when you get to work.
+starts the 5-hour cooldown early so it is already running when you get to work. The
+button is live only while the 5-hour window is still full, since there is nothing to
+start once the clock is running.
 
 <p align="center">
   <img src="assets/panel.svg" alt="The Cooldown panel, listing the 5-hour and weekly quota left for Claude and Codex" width="330">

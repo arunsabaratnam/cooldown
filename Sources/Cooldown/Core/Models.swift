@@ -72,6 +72,12 @@ struct UsageWindow: Equatable, Identifiable {
         guard let resetsAt else { return false }
         return resetsAt <= Date()
     }
+
+    /// True when the bar is showing the whole window. Rounded the way the panel rounds
+    /// it, so "full" always means the same thing to the eye and to the button.
+    var isFull: Bool {
+        Int(remainingPercent.rounded()) >= 100
+    }
 }
 
 /// What we managed to read for one provider at one moment.

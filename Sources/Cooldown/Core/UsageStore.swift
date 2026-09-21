@@ -119,8 +119,29 @@ final class UsageStore: ObservableObject {
 
     // MARK: - Preparing
 
+    /// The button is only worth pressing while the 5-hour window is still whole: once the
+    /// clock is running, starting it again just spends quota. So it is live only when every
+    /// 5-hour bar we can read is at 100%, and only when at least one of them could be read.
+    var canPrepare: Bool {
+        guard preparing.isEmpty, !visibleProviders.isEmpty else { return false }
+        let fiveHourWindows = visibleProviders.compactMap { states[$0]?.snapshot?.window(.fiveHour) }
+        guard !fiveHourWindows.isEmpty else { return false }
+        return fiveHourWindows.allSatisfy(\.isFull)
+    }
+
+    /// Shown on hover, so the button can explain itself without putting a paragraph in the panel.
+    var prepareHint: String {
+        if !preparing.isEmpty { return "Starting the cooldown…" }
+        if visibleProviders.isEmpty { return "No providers are switched on." }
+        let fiveHourWindows = visibleProviders.compactMap { states[$0]?.snapshot?.window(.fiveHour) }
+        if fiveHourWindows.isEmpty { return "No 5-hour window has been read yet." }
+        if !fiveHourWindows.allSatisfy(\.isFull) { return "The 5-hour window is already running." }
+        return "Sends one short throwaway prompt now, so the 5-hour clock is already running when you sit down. It shifts the window earlier; it does not add quota."
+    }
+
     /// Runs the prepare command for every enabled provider that has one.
     func prepareAll() {
+        guard canPrepare else { return }
         for provider in ProviderID.allCases where settings.enabledProviders.contains(provider) {
             prepare(provider)
         }
