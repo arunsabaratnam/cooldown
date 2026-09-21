@@ -28,12 +28,6 @@ struct SettingsSection: View {
                 .toggleStyle(.checkbox)
                 .font(.system(size: 11))
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Refresh every \(Int(store.settings.refreshIntervalSeconds))s")
-                    .font(.system(size: 11))
-                Slider(value: $store.settings.refreshIntervalSeconds, in: 30...900, step: 30)
-            }
-
             VStack(alignment: .leading, spacing: 6) {
                 Text("Prepare commands")
                     .font(.system(size: 11))

@@ -76,6 +76,22 @@ not grant extra quota, and it has no effect on the weekly window, which is a fix
 weekly slot. It also spends a small amount of quota, which is unavoidable: starting the
 clock means putting something on it.
 
+## Refreshing
+
+There is no refresh button. The app reads the quota by itself:
+
+- on launch, and whenever you open the panel (unless it read in the last 15 seconds);
+- whenever the Mac wakes from sleep, since the timer does not fire while it is asleep
+  and the numbers on screen are hours old by then;
+- a few seconds after a prepare run, so the started window shows up;
+- otherwise on a cadence that follows the windows: every 5 minutes when nothing is
+  close, every minute once a window is within 10 minutes of resetting, and once more
+  just after it resets. While the panel is open it reads every 30 seconds so the
+  countdown stays honest.
+
+`Core/RefreshPolicy.swift` holds those numbers and nothing else, so the cadence is one
+file to change.
+
 ## Building
 
 Needs macOS 14 or later and the Xcode command line tools (`xcode-select --install`).
@@ -101,8 +117,9 @@ token is exactly the kind of thing macOS asks about. Allow it once.
 Sources/UsageBar/
   UsageBarApp.swift        the menu bar scene and its label
   Core/Models.swift        UsageWindow, ProviderSnapshot, ProviderState
-  Core/UsageStore.swift    polling, the prepare action, what the menu bar says
-  Core/Settings.swift      what is on, how often, what the prepare commands are
+  Core/UsageStore.swift    reading, the prepare action, what the menu bar says
+  Core/RefreshPolicy.swift when to read next
+  Core/Settings.swift      what is on, what the menu bar shows, the prepare commands
   Core/Preparer.swift      runs a prepare command and reports what happened
   Core/Shell.swift         process runner, and recovering the login PATH
   Core/JSONDig.swift       tolerant JSON reading, because the field spellings vary

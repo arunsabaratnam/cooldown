@@ -1,5 +1,6 @@
-import Foundation
+import AppKit
 import Combine
+import Foundation
 
 @MainActor
 final class UsageStore: ObservableObject {
@@ -12,8 +13,8 @@ final class UsageStore: ObservableObject {
         didSet {
             guard settings != oldValue else { return }
             settings.save()
-            if settings.refreshIntervalSeconds != oldValue.refreshIntervalSeconds {
-                restartTimer()
+            if settings.enabledProviders != oldValue.enabledProviders {
+                refresh(force: true)
             }
         }
     }
@@ -24,20 +25,56 @@ final class UsageStore: ObservableObject {
     ]
     private var timer: Timer?
     private var refreshTask: Task<Void, Never>?
+    private var isPanelOpen = false
+    private var wakeObserver: NSObjectProtocol?
 
     init() {
         self.settings = Settings.load()
         for provider in ProviderID.allCases {
             states[provider] = .neverRead
         }
-        restartTimer()
+        // A Mac that has been asleep comes back with numbers that are hours stale and a
+        // timer that did not fire while it slept, so treat waking as a reason to read.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.refresh(force: true) }
+        }
+        refresh(force: true)
+    }
+
+    deinit {
+        if let wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+        }
+    }
+
+    // MARK: - When the panel is on screen
+
+    /// The panel is open, so read more often and read now if what we have is stale.
+    func panelAppeared() {
+        isPanelOpen = true
         refresh()
+        scheduleNextRead()
+    }
+
+    func panelDisappeared() {
+        isPanelOpen = false
+        scheduleNextRead()
     }
 
     // MARK: - Reading
 
-    func refresh() {
+    /// Reads every enabled provider. Without `force`, a read that happened in the last
+    /// few seconds counts as good enough, so opening and closing the panel repeatedly
+    /// does not spawn a process each time.
+    func refresh(force: Bool = false) {
         guard refreshTask == nil else { return }
+        if !force, let lastRefresh, Date().timeIntervalSince(lastRefresh) < RefreshPolicy.freshEnough {
+            return
+        }
         isRefreshing = true
         let selected: [(ProviderID, any UsageProvider)] = ProviderID.allCases
             .filter { settings.enabledProviders.contains($0) }
@@ -60,14 +97,24 @@ final class UsageStore: ObservableObject {
         isRefreshing = false
         lastRefresh = Date()
         refreshTask = nil
+        scheduleNextRead()
     }
 
-    private func restartTimer() {
+    /// One-shot rather than repeating, because the gap changes with what we just read.
+    private func scheduleNextRead() {
         timer?.invalidate()
-        let interval = max(30, settings.refreshIntervalSeconds)
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+        let delay = RefreshPolicy.delay(isPanelOpen: isPanelOpen, resets: knownResets)
+        timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.refresh(force: true) }
         }
+    }
+
+    /// Every reset time we currently know about, across the providers on show.
+    private var knownResets: [Date] {
+        visibleProviders
+            .compactMap { states[$0]?.snapshot }
+            .flatMap { $0.windows }
+            .compactMap { $0.resetsAt }
     }
 
     // MARK: - Preparing
@@ -98,7 +145,7 @@ final class UsageStore: ObservableObject {
         // request, so give it a beat before reading again.
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            await self?.refresh()
+            await self?.refresh(force: true)
         }
     }
 

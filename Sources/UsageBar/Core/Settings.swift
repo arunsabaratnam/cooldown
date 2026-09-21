@@ -22,7 +22,6 @@ enum MenuBarDisplay: String, CaseIterable, Identifiable, Codable {
 
 struct Settings: Codable, Equatable {
     var enabledProviders: Set<ProviderID> = Set(ProviderID.allCases)
-    var refreshIntervalSeconds: Double = 120
     var menuBarDisplay: MenuBarDisplay = .allProviders
     /// Shown in the menu bar: what is left, rather than what is used.
     var showRemaining: Bool = true

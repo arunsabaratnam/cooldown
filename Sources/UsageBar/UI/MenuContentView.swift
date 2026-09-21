@@ -35,6 +35,8 @@ struct MenuContentView: View {
             }
         }
         .frame(width: 300)
+        .onAppear { store.panelAppeared() }
+        .onDisappear { store.panelDisappeared() }
     }
 
     private var header: some View {
@@ -42,21 +44,16 @@ struct MenuContentView: View {
             Text("Usage")
                 .font(.system(size: 13, weight: .semibold))
             Spacer()
+            // No refresh button: the app reads on its own, and this line is only here
+            // so you can tell at a glance how current the numbers are.
             if store.isRefreshing {
                 ProgressView()
                     .controlSize(.small)
             } else if let lastRefresh = store.lastRefresh {
-                Text(Format.age(of: lastRefresh))
+                Text("Updated \(Format.age(of: lastRefresh))")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             }
-            Button {
-                store.refresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.borderless)
-            .help("Read the quota again now")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
