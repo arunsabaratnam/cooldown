@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "UsageBar",
+    name: "Cooldown",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "UsageBar",
-            path: "Sources/UsageBar"
+            name: "Cooldown",
+            path: "Sources/Cooldown"
         )
     ]
 )

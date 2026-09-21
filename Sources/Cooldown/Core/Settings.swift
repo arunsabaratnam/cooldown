@@ -30,7 +30,7 @@ struct Settings: Codable, Equatable {
         .codex: #"codex exec "reply with ok""#,
     ]
 
-    static let defaultsKey = "UsageBarSettings"
+    static let defaultsKey = "CooldownSettings"
 
     static func load() -> Settings {
         guard

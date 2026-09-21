@@ -1,16 +1,16 @@
 #!/bin/bash
-# Builds UsageBar.app. Needs the Xcode command line tools (`xcode-select --install`)
+# Builds Cooldown.app. Needs the Xcode command line tools (`xcode-select --install`)
 # on macOS 14 or later; no Xcode project and no Xcode app required.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-APP="$ROOT/build/UsageBar.app"
+APP="$ROOT/build/Cooldown.app"
 
 echo "==> Building"
 swift build -c release
 
-BINARY="$(swift build -c release --show-bin-path)/UsageBar"
+BINARY="$(swift build -c release --show-bin-path)/Cooldown"
 if [ ! -x "$BINARY" ]; then
   echo "error: expected a binary at $BINARY" >&2
   exit 1
@@ -19,7 +19,7 @@ fi
 echo "==> Assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BINARY" "$APP/Contents/MacOS/UsageBar"
+cp "$BINARY" "$APP/Contents/MacOS/Cooldown"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 
 # The iconset is committed, so this only needs iconutil, which ships with macOS.

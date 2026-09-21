@@ -3,14 +3,14 @@
 #
 # Claude Code hands its status line command a JSON blob on stdin that includes
 # `rate_limits`. This installs a wrapper that saves that blob to
-# ~/.usagebar/claude-statusline.json and then hands off to whatever status line
+# ~/.cooldown/claude-statusline.json and then hands off to whatever status line
 # you already had, so your status line keeps looking the same.
 #
 # This source only updates while a Claude Code session is open, so it is a fallback:
 # the app prefers the live usage endpoint and shows the age of whatever it used.
 set -euo pipefail
 
-CACHE_DIR="$HOME/.usagebar"
+CACHE_DIR="$HOME/.cooldown"
 WRAPPER="$CACHE_DIR/claude-statusline.sh"
 SETTINGS="$HOME/.claude/settings.json"
 
@@ -34,7 +34,7 @@ PY
 
 cat > "$WRAPPER" <<WRAP
 #!/bin/bash
-# Written by UsageBar. Saves Claude Code's status line payload, then renders a line.
+# Written by Cooldown. Saves Claude Code's status line payload, then renders a line.
 INPUT=\$(cat)
 printf '%s' "\$INPUT" > "$CACHE_DIR/claude-statusline.json.tmp"
 mv "$CACHE_DIR/claude-statusline.json.tmp" "$CACHE_DIR/claude-statusline.json"
@@ -68,7 +68,7 @@ path, wrapper = sys.argv[1], sys.argv[2]
 os.makedirs(os.path.dirname(path), exist_ok=True)
 settings = {}
 if os.path.exists(path):
-    shutil.copyfile(path, path + ".usagebar-backup")
+    shutil.copyfile(path, path + ".cooldown-backup")
     try:
         settings = json.load(open(path))
     except Exception:
@@ -77,7 +77,7 @@ settings["statusLine"] = {"type": "command", "command": wrapper}
 with open(path, "w") as handle:
     json.dump(settings, handle, indent=2)
     handle.write("\n")
-print("updated " + path + (" (previous version saved alongside as .usagebar-backup)" if os.path.exists(path + ".usagebar-backup") else ""))
+print("updated " + path + (" (previous version saved alongside as .cooldown-backup)" if os.path.exists(path + ".cooldown-backup") else ""))
 PY
 
 echo "Installed $WRAPPER"

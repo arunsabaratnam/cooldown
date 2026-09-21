@@ -1,7 +1,7 @@
-# UsageBar
+# Cooldown
 
 A macOS menu bar app that shows how much of your Claude and Codex quota is left, and
-starts the 5-hour window early so it has already been counting down by the time you
+starts the 5-hour cooldown early so it has already been counting down by the time you
 sit down to work.
 
 Nothing here is an official integration with either tool. Everything it shows is read
@@ -36,7 +36,7 @@ source and a fallback.
    [does document](https://code.claude.com/docs/en/statusline) a `rate_limits` object
    with `five_hour` and `seven_day`, each carrying `used_percentage` and `resets_at`.
    `scripts/install-claude-statusline.sh` installs a wrapper that saves that payload to
-   `~/.usagebar/claude-statusline.json` and then hands off to whatever status line you
+   `~/.cooldown/claude-statusline.json` and then hands off to whatever status line you
    already had. This only updates while a session is open, so the app shows its age.
 
 `rate_limits` is only populated for Pro and Max accounts, and only after the first API
@@ -60,7 +60,7 @@ only; it sends no prompts and changes no files.
 
 ## The prepare button
 
-"Start the 5-hour window" sends one short throwaway prompt to each enabled provider
+"Start the 5-hour cooldown" sends one short throwaway prompt to each enabled provider
 right now, in your login shell:
 
 ```
@@ -99,10 +99,10 @@ There is no Xcode project; it builds with SwiftPM.
 
 ```
 ./scripts/build-app.sh
-open build/UsageBar.app
+open build/Cooldown.app
 ```
 
-The build script assembles `build/UsageBar.app` and signs it ad-hoc, which is enough to
+The build script assembles `build/Cooldown.app` and signs it ad-hoc, which is enough to
 run it on the machine that built it. Copy it to `/Applications` to keep it.
 
 It is a menu bar app (`LSUIElement`), so it has no Dock icon and no window. Quit it from
@@ -114,8 +114,8 @@ token is exactly the kind of thing macOS asks about. Allow it once.
 ## Layout
 
 ```
-Sources/UsageBar/
-  UsageBarApp.swift        the menu bar scene and its label
+Sources/Cooldown/
+  CooldownApp.swift        the menu bar scene and its label
   Core/Models.swift        UsageWindow, ProviderSnapshot, ProviderState
   Core/UsageStore.swift    reading, the prepare action, what the menu bar says
   Core/RefreshPolicy.swift when to read next

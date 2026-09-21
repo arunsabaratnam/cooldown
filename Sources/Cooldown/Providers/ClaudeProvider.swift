@@ -14,7 +14,7 @@ import Foundation
 struct ClaudeProvider: UsageProvider {
     let id: ProviderID = .claude
 
-    static let statusLineCachePath = "\(NSHomeDirectory())/.usagebar/claude-statusline.json"
+    static let statusLineCachePath = "\(NSHomeDirectory())/.cooldown/claude-statusline.json"
 
     func read() async -> ProviderState {
         guard installedBinaryPath() != nil else { return .notInstalled }

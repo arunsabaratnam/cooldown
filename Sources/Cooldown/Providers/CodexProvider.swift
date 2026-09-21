@@ -50,7 +50,7 @@ struct CodexProvider: UsageProvider {
             requests: [
                 (
                     delay: 0,
-                    payload: #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"UsageBar","version":"0.1"}}}"#
+                    payload: #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"Cooldown","version":"0.1"}}}"#
                 ),
                 (
                     delay: 0.3,

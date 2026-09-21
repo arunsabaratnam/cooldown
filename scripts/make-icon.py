@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draws the UsageBar app icon and writes Resources/AppIcon.iconset.
+"""Draws the Cooldown app icon and writes Resources/AppIcon.iconset.
 
 Every shape here is a signed distance field, so the edges are antialiased from the
 distance itself rather than by supersampling, and there is no image library to install.

@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 @MainActor
-struct UsageBarApp: App {
+struct CooldownApp: App {
     @StateObject private var store = UsageStore()
 
     var body: some Scene {

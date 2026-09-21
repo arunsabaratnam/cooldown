@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>UsageBar</string>
+    <string>Cooldown</string>
     <key>CFBundleDisplayName</key>
-    <string>UsageBar</string>
+    <string>Cooldown</string>
     <key>CFBundleIdentifier</key>
-    <string>com.usagebar.app</string>
+    <string>com.arunsabaratnam.Cooldown</string>
     <key>CFBundleExecutable</key>
-    <string>UsageBar</string>
+    <string>Cooldown</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIconName</key>

@@ -38,25 +38,25 @@ fi
 
 if [ -n "$TOKEN" ]; then
   echo "--- GET https://api.anthropic.com/api/oauth/usage"
-  CODE=$(curl -sS -m 20 -o /tmp/usagebar-probe-claude.json -w '%{http_code}' \
+  CODE=$(curl -sS -m 20 -o /tmp/cooldown-probe-claude.json -w '%{http_code}' \
     https://api.anthropic.com/api/oauth/usage \
     -H "Authorization: Bearer $TOKEN" \
     -H "anthropic-beta: oauth-2025-04-20" 2>/dev/null)
   if [ "$CODE" = "200" ]; then
     green "HTTP 200"
-    python3 -m json.tool /tmp/usagebar-probe-claude.json 2>/dev/null | head -40
+    python3 -m json.tool /tmp/cooldown-probe-claude.json 2>/dev/null | head -40
   else
     red "HTTP $CODE"
-    head -c 400 /tmp/usagebar-probe-claude.json 2>/dev/null; echo
+    head -c 400 /tmp/cooldown-probe-claude.json 2>/dev/null; echo
     dim "This endpoint is undocumented, so a non-200 here means the app falls back to the status line snapshot."
   fi
 else
   dim "Skipping the usage endpoint: no token to send."
 fi
 
-if [ -f "$HOME/.usagebar/claude-statusline.json" ]; then
-  green "status line snapshot present ($(date -r "$HOME/.usagebar/claude-statusline.json" '+%Y-%m-%d %H:%M'))"
-  python3 -c 'import json;d=json.load(open("'"$HOME"'/.usagebar/claude-statusline.json"));print(json.dumps(d.get("rate_limits",{}),indent=2))' 2>/dev/null
+if [ -f "$HOME/.cooldown/claude-statusline.json" ]; then
+  green "status line snapshot present ($(date -r "$HOME/.cooldown/claude-statusline.json" '+%Y-%m-%d %H:%M'))"
+  python3 -c 'import json;d=json.load(open("'"$HOME"'/.cooldown/claude-statusline.json"));print(json.dumps(d.get("rate_limits",{}),indent=2))' 2>/dev/null
 else
   dim "no status line snapshot yet (run scripts/install-claude-statusline.sh to add the fallback source)"
 fi
@@ -67,7 +67,7 @@ if command -v codex >/dev/null 2>&1; then
   green "codex found at $(command -v codex)"
   echo "--- codex app-server account/rateLimits/read"
   {
-    printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"usagebar-probe","version":"0.1"}}}'
+    printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"cooldown-probe","version":"0.1"}}}'
     printf '%s\n' '{"jsonrpc":"2.0","method":"initialized","params":{}}'
     sleep 1
     printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"account/rateLimits/read","params":{}}'

@@ -66,7 +66,7 @@ struct MenuContentView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "clock.arrow.circlepath")
-                    Text(store.preparing.isEmpty ? "Start the 5-hour window" : "Starting…")
+                    Text(store.preparing.isEmpty ? "Start the 5-hour cooldown" : "Starting…")
                 }
                 .frame(maxWidth: .infinity)
             }
