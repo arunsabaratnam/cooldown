@@ -109,7 +109,7 @@ final class StatusItemController: NSObject {
         let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
         fitPanel(anchoredTop: buttonFrame.minY - 6, centeredOn: buttonFrame.midX, screen: buttonWindow.screen)
         panel.makeKeyAndOrderFront(nil)
-        button.highlight(true)
+        setHighlighted(true)
 
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in self?.hidePanel() }
@@ -126,12 +126,22 @@ final class StatusItemController: NSObject {
     func hidePanel() {
         guard panel.isVisible else { return }
         panel.orderOut(nil)
-        item.button?.highlight(false)
+        setHighlighted(false)
         store.panelDisappeared()
         if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         outsideClickMonitor = nil
         keyMonitor = nil
+    }
+
+    /// The pressed look the status item has while its panel is open, like a menu.
+    ///
+    /// The click action arrives from inside the button's own mouse tracking, whose last
+    /// step clears the highlight, so one set right away is wiped out by the time the
+    /// click has finished. Setting it on the next turn of the run loop lands after that.
+    private func setHighlighted(_ highlighted: Bool) {
+        guard let button = item.button else { return }
+        DispatchQueue.main.async { button.highlight(highlighted) }
     }
 
     /// Sizes the panel to its content, keeping its top edge where it is.
