@@ -42,50 +42,55 @@ final class ShellEnvironment {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
+        var loginPath = ""
         do {
             try process.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            loginPath = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         } catch {
-            return fallback
+            // No login shell to ask; the fallback below is all we have.
         }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let loginPath = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !loginPath.isEmpty else { return fallback }
-        // Union of both, so a login shell that trims things still leaves us the usual suspects.
-        var seen = Set<String>()
-        let merged = (loginPath.split(separator: ":") + fallback.split(separator: ":"))
-            .map(String.init)
-            .filter { seen.insert($0).inserted }
-        return merged.joined(separator: ":")
+        // Union of both, so a login shell that trims things still leaves us the usual
+        // suspects, then the app bundles last, so a real install always wins over one.
+        let loginEntries = loginPath.isEmpty ? [] : loginPath.split(separator: ":").map(String.init)
+        return mergedPath(loginEntries + fallback.split(separator: ":").map(String.init) + bundledCLIDirectories())
     }
 
-    /// Absolute path of a CLI on the recovered PATH, or bundled inside a desktop app, or
-    /// nil when it is not installed anywhere we know to look.
+    /// The entries in order, each kept the first time it appears.
+    static func mergedPath(_ entries: [String]) -> String {
+        var seen = Set<String>()
+        return entries.filter { !$0.isEmpty && seen.insert($0).inserted }.joined(separator: ":")
+    }
+
+    /// Absolute path of a CLI on the recovered PATH, or nil when it is not installed
+    /// anywhere we know to look.
     func locate(_ binary: String) -> String? {
         for directory in path.split(separator: ":") {
             let candidate = "\(directory)/\(binary)"
             if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
         }
-        return Self.bundledCopies(of: binary).first { FileManager.default.isExecutableFile(atPath: $0) }
+        return nil
     }
 
     /// Some CLIs ship inside a desktop app, for people who use the app and never installed
     /// the CLI on its own. The ChatGPT app carries a full `codex` that reads the same
     /// `~/.codex` sign-in, so it answers `app-server` just as the standalone one does.
-    private static func bundledCopies(of binary: String) -> [String] {
-        let apps: [(bundleID: String, fallbackPath: String, relative: String)]
-        switch binary {
-        case "codex":
-            apps = [
-                ("com.openai.chat", "/Applications/ChatGPT.app", "Contents/Resources/codex"),
-                ("com.openai.codex", "/Applications/Codex.app", "Contents/Resources/codex"),
-            ]
-        default:
-            return []
-        }
+    ///
+    /// These go on the PATH itself rather than being a private fallback for `locate`, so
+    /// every process the app starts can find them too. The start command runs in the
+    /// user's login shell, and `codex exec …` there was failing with "command not found"
+    /// on a Mac whose only codex was the one inside ChatGPT.app.
+    private static func bundledCLIDirectories() -> [String] {
+        let apps: [(bundleID: String, fallbackPath: String, relative: String, binary: String)] = [
+            ("com.openai.chat", "/Applications/ChatGPT.app", "Contents/Resources", "codex"),
+            ("com.openai.codex", "/Applications/Codex.app", "Contents/Resources", "codex"),
+        ]
         return apps.flatMap { app -> [String] in
             let located = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID)?.path
-            return [located, app.fallbackPath].compactMap { $0 }.map { "\($0)/\(app.relative)" }
+            return [located, app.fallbackPath].compactMap { $0 }
+                .map { "\($0)/\(app.relative)" }
+                .filter { FileManager.default.isExecutableFile(atPath: "\($0)/\(app.binary)") }
         }
     }
 }

@@ -46,6 +46,10 @@ check(pastHoldOff == RefreshPolicy.whileOpen, "an expired hold-off changes nothi
 let noHoldOff = RefreshPolicy.delay(isPanelOpen: false, resets: [], holdOffUntil: nil, now: now)
 check(noHoldOff == RefreshPolicy.whileIdle, "no hold-off changes nothing")
 
+print("ShellEnvironment.mergedPath")
+check(ShellEnvironment.mergedPath(["/a", "/b", "/a", "", "/c"]) == "/a:/b:/c", "keeps each directory once, in order, and drops empties")
+check(ShellEnvironment.mergedPath([]) == "", "empty in, empty out")
+
 print("ProviderState.merge")
 let good = ProviderState.ok(snapshot(resetsIn: 3600))
 let limited = ProviderState.unavailable(reason: "usage endpoint returned 429", rateLimited: true)
