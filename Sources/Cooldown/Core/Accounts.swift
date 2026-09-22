@@ -1,11 +1,10 @@
 import AppKit
 import Foundation
 
-/// An account shown in Settings → Accounts. ChatGPT is listed on its own because that
-/// is how people think of it, but it is the same sign-in Codex uses: Codex logs in with
-/// a ChatGPT account, and that is the only ChatGPT sign-in Cooldown can see.
+/// An account shown in Settings → Accounts. Codex signs in with a ChatGPT account, so
+/// there is no separate ChatGPT row: the Codex row is that sign-in.
 enum AccountID: String, CaseIterable, Identifiable {
-    case claude, codex, chatgpt
+    case claude, codex
 
     var id: String { rawValue }
 
@@ -13,7 +12,6 @@ enum AccountID: String, CaseIterable, Identifiable {
         switch self {
         case .claude: return "Claude"
         case .codex: return "Codex"
-        case .chatgpt: return "ChatGPT"
         }
     }
 
@@ -21,30 +19,29 @@ enum AccountID: String, CaseIterable, Identifiable {
     var binaryName: String {
         switch self {
         case .claude: return "claude"
-        case .codex, .chatgpt: return "codex"
+        case .codex: return "codex"
         }
     }
 
-    /// The usage provider this account feeds, if any.
-    var provider: ProviderID? {
+    /// The usage provider this account feeds.
+    var provider: ProviderID {
         switch self {
         case .claude: return .claude
         case .codex: return .codex
-        case .chatgpt: return nil
         }
     }
 
     var loginArguments: [String] {
         switch self {
         case .claude: return ["auth", "login"]
-        case .codex, .chatgpt: return ["login"]
+        case .codex: return ["login"]
         }
     }
 
     var logoutArguments: [String] {
         switch self {
         case .claude: return ["auth", "logout"]
-        case .codex, .chatgpt: return ["logout"]
+        case .codex: return ["logout"]
         }
     }
 }
@@ -83,7 +80,7 @@ enum Accounts {
             if let binary { return await readClaude(binary: binary) }
             if await OAuthToken.load() != nil { return .signedIn(AccountInfo(email: nil, plan: nil)) }
             return .notInstalled
-        case .codex, .chatgpt:
+        case .codex:
             let state = readCodex()
             if binary == nil, !state.isSignedIn { return .notInstalled }
             return state
@@ -114,7 +111,7 @@ enum Accounts {
         return .signedIn(AccountInfo(email: email, plan: plan))
     }
 
-    // MARK: - Codex / ChatGPT
+    // MARK: - Codex
 
     /// Codex keeps its sign-in in `auth.json`. With a ChatGPT login, the `id_token` in there
     /// is a JWT whose claims carry the email and the ChatGPT plan. We only read those two
@@ -166,7 +163,7 @@ enum Accounts {
     static func loginCommand(for account: AccountID, binary: String) -> [String] {
         switch account {
         case .claude: return [binary, "auth", "login", "--claudeai"]
-        case .codex, .chatgpt: return [binary, "login"]
+        case .codex: return [binary, "login"]
         }
     }
 
@@ -239,7 +236,7 @@ enum Accounts {
         switch account {
         case .claude:
             return "curl -fsSL https://claude.ai/install.sh | bash && export PATH=\"$HOME/.local/bin:$PATH\""
-        case .codex, .chatgpt:
+        case .codex:
             if ShellEnvironment.shared.locate("npm") != nil {
                 return "npm install -g @openai/codex"
             }

@@ -55,8 +55,7 @@ struct LogoShape: Shape {
     }
 }
 
-/// The mark for each account: Claude's spark, OpenAI's for Codex, and the same mark
-/// white-on-black for ChatGPT so the two OpenAI rows can be told apart.
+/// The mark for each account: Claude's spark and OpenAI's for Codex.
 struct AccountLogo: View {
     let account: AccountID
     var size: CGFloat = 18
@@ -73,15 +72,6 @@ struct AccountLogo: View {
             LogoShape(path: LogoPaths.openAI)
                 .fill(colorScheme == .dark ? Color.white : Color(hex: 0x1D1D1F))
                 .frame(width: size, height: size)
-        case .chatgpt:
-            RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
-                .fill(Color.black)
-                .frame(width: size, height: size)
-                .overlay(
-                    LogoShape(path: LogoPaths.openAI)
-                        .fill(Color.white)
-                        .frame(width: size * 0.62, height: size * 0.62)
-                )
         }
     }
 }

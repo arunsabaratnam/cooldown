@@ -390,7 +390,8 @@ private struct AccountsPane: View {
                     AccountRow(account: account, store: store, logoSize: 28)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 12)
-                    if let provider = account.provider, store.accounts[account]?.isSignedIn == true {
+                    if store.accounts[account]?.isSignedIn == true {
+                        let provider = account.provider
                         Divider().padding(.leading, 58)
                         HStack {
                             Text("Show in panel and menu bar").font(.system(size: 13))

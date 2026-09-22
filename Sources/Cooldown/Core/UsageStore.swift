@@ -322,7 +322,6 @@ final class UsageStore: ObservableObject {
         if Self.fixture != nil {
             accounts[.claude] = .signedIn(AccountInfo(email: "you@example.com", plan: "Max"))
             accounts[.codex] = .signedOut
-            accounts[.chatgpt] = .signedOut
             return
         }
         Task { [weak self] in
