@@ -14,7 +14,7 @@ before you sit down to work.**
 ## What it looks like
 
 <p align="center">
-  <video src="https://github.com/arunsabaratnam/cooldown/raw/main/assets/demo.mp4" poster="https://github.com/arunsabaratnam/cooldown/raw/main/assets/demo-poster.png" controls muted playsinline width="736">
+  <video src="https://github.com/arunsabaratnam/cooldown/raw/main/assets/demo.mp4" controls muted width="736">
     <a href="https://github.com/arunsabaratnam/cooldown/raw/main/assets/demo.mp4">Watch the 30-second tour</a>: the ring in the menu bar opens a panel of 5-hour windows, then the settings window moves through the menu bar icon, the panel layouts and the six themes.
   </video>
 </p>
