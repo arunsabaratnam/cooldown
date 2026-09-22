@@ -36,14 +36,12 @@ struct UsageWindow: Equatable, Identifiable {
     enum Kind: String, Equatable {
         case fiveHour
         case weekly
-        case weeklySecondary   // Claude reports a separate weekly window for its largest model
         case spend
 
         var label: String {
             switch self {
             case .fiveHour: return "5-hour"
             case .weekly: return "Weekly"
-            case .weeklySecondary: return "Weekly · Opus"
             case .spend: return "Spend"
             }
         }
@@ -53,8 +51,7 @@ struct UsageWindow: Equatable, Identifiable {
             switch self {
             case .fiveHour: return 0
             case .weekly: return 1
-            case .weeklySecondary: return 2
-            case .spend: return 3
+            case .spend: return 2
             }
         }
     }
@@ -83,7 +80,7 @@ struct UsageWindow: Equatable, Identifiable {
     var length: TimeInterval? {
         switch kind {
         case .fiveHour: return 5 * 3600
-        case .weekly, .weeklySecondary: return 7 * 24 * 3600
+        case .weekly: return 7 * 24 * 3600
         case .spend: return nil
         }
     }

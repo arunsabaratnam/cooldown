@@ -11,7 +11,6 @@ enum Fixtures {
             .ok(ProviderSnapshot(provider: .claude, windows: [
                 window(.fiveHour, used: fiveHourUsed, resetsIn: fiveHourUsed == 0 ? nil : 3 * 3600 + 12 * 60),
                 window(.weekly, used: 36, resetsIn: 2 * 86400 + 12 * 3600),
-                window(.weeklySecondary, used: 9, resetsIn: 2 * 86400 + 12 * 3600),
             ], source: "fixture", capturedAt: now))
         }
         func codex(fiveHourUsed: Double) -> ProviderState {

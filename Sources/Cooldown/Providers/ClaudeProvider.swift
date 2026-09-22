@@ -102,7 +102,6 @@ struct ClaudeProvider: UsageProvider {
         let candidates: [(UsageWindow.Kind, [String])] = [
             (.fiveHour, ["five_hour", "fiveHour", "5h"]),
             (.weekly, ["seven_day", "sevenDay", "seven_day_sonnet", "week", "7d"]),
-            (.weeklySecondary, ["seven_day_opus", "sevenDayOpus", "seven_day_large"]),
             (.spend, ["spend_limit", "spendLimit"]),
         ]
 
