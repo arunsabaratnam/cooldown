@@ -40,7 +40,10 @@ final class UsageStore: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.refresh(force: true) }
+            // Bind self here rather than inside the Task: a captured weak var cannot be
+            // read from concurrently-executing code.
+            guard let self else { return }
+            Task { @MainActor in self.refresh(force: true) }
         }
         refresh(force: true)
     }
@@ -88,7 +91,7 @@ final class UsageStore: ObservableObject {
                 }
                 for await result in group { results.append(result) }
             }
-            await self?.applyResults(results)
+            self?.applyResults(results)
         }
     }
 
@@ -105,7 +108,8 @@ final class UsageStore: ObservableObject {
         timer?.invalidate()
         let delay = RefreshPolicy.delay(isPanelOpen: isPanelOpen, resets: knownResets)
         timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
-            Task { @MainActor in self?.refresh(force: true) }
+            guard let self else { return }
+            Task { @MainActor in self.refresh(force: true) }
         }
     }
 
@@ -154,7 +158,7 @@ final class UsageStore: ObservableObject {
         Task { [weak self] in
             let outcome = await Preparer.prepare(provider: provider, command: command)
             guard let self else { return }
-            await self.finishPreparing(provider, outcome: outcome)
+            self.finishPreparing(provider, outcome: outcome)
         }
     }
 
@@ -166,7 +170,7 @@ final class UsageStore: ObservableObject {
         // request, so give it a beat before reading again.
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            await self?.refresh(force: true)
+            self?.refresh(force: true)
         }
     }
 
