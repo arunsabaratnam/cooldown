@@ -13,6 +13,10 @@ before you sit down to work.**
 
 ## What it looks like
 
+<p align="center">
+  <img src="assets/demo.gif" alt="Cooldown in use: the ring in the menu bar opens a panel of 5-hour windows, then the settings window moves through the menu bar icon, the panel layouts and the six themes" width="552">
+</p>
+
 It sits in the menu bar as a ring that drains as the tightest 5-hour window runs down.
 
 <p align="center">
@@ -29,14 +33,6 @@ start once the clock is running.
 </p>
 
 There is also a Classic layout, a card of bars for each provider, and six themes.
-
-<p align="center">
-  <img src="assets/panel-classic.png" alt="The Cooldown panel in the Classic layout and the Midnight theme, with a card of bars for Claude and another for Codex" width="352">
-</p>
-
-<p align="center">
-  <img src="assets/settings.png" alt="The Appearance pane of Cooldown's settings: six theme tiles, the dark mode and tint switches, and the Rings and Classic layout tiles" width="620">
-</p>
 
 ---
 
