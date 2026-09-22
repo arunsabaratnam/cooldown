@@ -339,17 +339,7 @@ private struct LayoutTile: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
                     .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                HStack(spacing: 6) {
-                    Text(layout.label).font(.system(size: 12, weight: .semibold))
-                    if layout == .rings {
-                        Text("New")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(theme.heroText)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(theme.hero, in: RoundedRectangle(cornerRadius: 4))
-                    }
-                }
+                Text(layout.label).font(.system(size: 12, weight: .semibold))
                 Text(layout.blurb)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)

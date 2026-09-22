@@ -75,6 +75,15 @@ final class StatusItemController: NSObject {
             }
             .store(in: &cancellables)
         refresh()
+
+        // `COOLDOWN_SHOTS=<dir>` writes the README pictures into that folder and quits.
+        // The app draws its own windows, so no screen recording permission is needed.
+        // Debug builds only, like the fixtures.
+        #if DEBUG
+        if let dir = ProcessInfo.processInfo.environment["COOLDOWN_SHOTS"] {
+            Task { await self.writeScreenshots(to: URL(fileURLWithPath: dir)) }
+        }
+        #endif
     }
 
     private func refresh() {
@@ -146,7 +155,7 @@ final class FloatingPanel: NSPanel {
 @MainActor
 final class SettingsWindowController {
     static let shared = SettingsWindowController()
-    private var window: NSWindow?
+    fileprivate var window: NSWindow?
 
     func show(_ pane: SettingsPane, store: UsageStore) {
         store.settingsPane = pane
@@ -271,3 +280,102 @@ enum MenuBarIconRenderer {
         return image
     }
 }
+
+#if DEBUG
+extension StatusItemController {
+    /// One picture per view the README shows: the panel in each layout, the Settings
+    /// window and the menu bar item, all rendered from the live windows.
+    fileprivate func writeScreenshots(to dir: URL) async {
+        func settle() async { try? await Task.sleep(for: .milliseconds(700)) }
+        func write(_ window: NSWindow, as name: String) {
+            guard let image = CGWindowListCreateImage(
+                .null, .optionIncludingWindow, CGWindowID(window.windowNumber),
+                [.boundsIgnoreFraming, .bestResolution]
+            ) else { return print("no image for \(name)") }
+            let rep = NSBitmapImageRep(cgImage: image)
+            guard let png = rep.representation(using: .png, properties: [:]) else { return }
+            try? png.write(to: dir.appendingPathComponent("\(name).png"))
+            print("wrote \(name) \(image.width)x\(image.height)")
+        }
+
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        await settle()
+
+        store.settings.panelLayout = .rings
+        store.settings.theme = .glacier
+        showPanel()
+        await settle()
+        write(panel, as: "panel-rings")
+        if let button = item.button { writeMenuBar(button: button, to: dir) }
+
+        store.settings.panelLayout = .classic
+        store.settings.theme = .midnight
+        await settle()
+        write(panel, as: "panel-classic")
+
+        store.settings.panelLayout = .rings
+        store.settings.theme = .glacier
+        SettingsWindowController.shared.show(.appearance, store: store)
+        await settle()
+        if let window = SettingsWindowController.shared.window { write(window, as: "settings") }
+        NSApp.terminate(nil)
+    }
+
+    /// The right end of a menu bar: the status item as it is drawn, then the
+    /// clock, on a bar the colour macOS gives it over a dark desktop.
+    private func writeMenuBar(button: NSStatusBarButton, to dir: URL) {
+        let size = NSSize(width: 560, height: 37)
+        let scale: CGFloat = 2
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return }
+        rep.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        let bar = NSRect(origin: .zero, size: size)
+        NSGradient(starting: NSColor(srgbRed: 0.16, green: 0.16, blue: 0.24, alpha: 1),
+                   ending: NSColor(srgbRed: 0.21, green: 0.15, blue: 0.24, alpha: 1))?
+            .draw(in: bar, angle: 0)
+
+        let ink = NSColor.white.withAlphaComponent(0.92)
+        let font = NSFont.systemFont(ofSize: 13)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink]
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE d MMM  HH:mm"
+        let clock = NSAttributedString(string: formatter.string(from: Date()), attributes: attributes)
+        var x = size.width - 16 - clock.size().width
+        clock.draw(at: NSPoint(x: x, y: (size.height - clock.size().height) / 2))
+
+        for name in ["switch.2", "battery.75percent", "wifi"] {
+            guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 14, weight: .regular)) else { continue }
+            let tinted = NSImage(size: symbol.size, flipped: false) { rect in
+                symbol.draw(in: rect)
+                ink.set()
+                rect.fill(using: .sourceAtop)
+                return true
+            }
+            x -= 18 + tinted.size.width
+            tinted.draw(in: NSRect(x: x, y: (size.height - tinted.size.height) / 2,
+                                   width: tinted.size.width, height: tinted.size.height))
+        }
+
+        // The status item, exactly as AppKit draws it in the bar.
+        let buttonRect = button.bounds
+        if let cache = button.bitmapImageRepForCachingDisplay(in: buttonRect) {
+            button.cacheDisplay(in: buttonRect, to: cache)
+            let image = NSImage(size: buttonRect.size)
+            image.addRepresentation(cache)
+            x -= 18 + buttonRect.width
+            image.draw(in: NSRect(x: x, y: (size.height - buttonRect.height) / 2,
+                                  width: buttonRect.width, height: buttonRect.height))
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        guard let png = rep.representation(using: .png, properties: [:]) else { return }
+        try? png.write(to: dir.appendingPathComponent("menu-bar.png"))
+        print("wrote menu-bar")
+    }
+}
+#endif
