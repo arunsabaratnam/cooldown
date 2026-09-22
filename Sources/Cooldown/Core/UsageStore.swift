@@ -10,6 +10,11 @@ final class UsageStore: ObservableObject {
     @Published private(set) var preparing: Set<ProviderID> = []
     @Published private(set) var recentOutcomes: [PrepareOutcome] = []
     @Published private(set) var accounts: [AccountID: AccountState] = [:]
+    /// Sign-ins in progress, or how the last one failed. Absent when nothing is happening.
+    @Published private(set) var logins: [AccountID: LoginProgress] = [:]
+    /// Why the numbers on show for a provider are older than the last read: the read failed
+    /// for a transient reason and the previous good numbers were kept. Absent when current.
+    @Published private(set) var staleReasons: [ProviderID: String] = [:]
     /// Which Settings pane is showing, so the gear menu can open straight to one.
     @Published var settingsPane: SettingsPane = .general
     @Published var settings: Settings {
@@ -42,8 +47,12 @@ final class UsageStore: ObservableObject {
     private var isPanelOpen = false
     private var wakeObserver: NSObjectProtocol?
     private var loginWatch: Task<Void, Never>?
+    private var loginTasks: [AccountID: Task<Void, Never>] = [:]
 
     private var lastAccountsRefresh: Date?
+    /// Reads in a row that came back rate limited, and until when we leave the source alone.
+    private var rateLimitedReads = 0
+    private var holdOffUntil: Date?
 
     /// `COOLDOWN_FIXTURE=codex|claude|both|none|empty` swaps the real reads for sample
     /// numbers, so every state of the panel can be looked at on a machine that has only
@@ -104,10 +113,14 @@ final class UsageStore: ObservableObject {
 
     /// Reads every enabled provider. Without `force`, a read that happened in the last
     /// few seconds counts as good enough, so opening and closing the panel repeatedly
-    /// does not spawn a process each time.
+    /// does not spawn a process each time, and a source that has just rate limited us is
+    /// left alone until its hold-off is over.
     func refresh(force: Bool = false) {
         guard refreshTask == nil else { return }
         if !force, let lastRefresh, Date().timeIntervalSince(lastRefresh) < RefreshPolicy.freshEnough {
+            return
+        }
+        if !force, let holdOffUntil, holdOffUntil > Date() {
             return
         }
         #if DEBUG
@@ -135,9 +148,21 @@ final class UsageStore: ObservableObject {
     }
 
     private func applyResults(_ results: [(ProviderID, ProviderState)]) {
-        for (id, state) in results { states[id] = state }
+        let now = Date()
+        for (id, fresh) in results {
+            let merged = ProviderState.merge(previous: states[id], fresh: fresh, now: now)
+            states[id] = merged.state
+            staleReasons[id] = merged.staleReason
+        }
+        if results.contains(where: { $0.1.isRateLimited }) {
+            rateLimitedReads += 1
+            holdOffUntil = now.addingTimeInterval(RefreshPolicy.holdOff(afterRateLimits: rateLimitedReads))
+        } else {
+            rateLimitedReads = 0
+            holdOffUntil = nil
+        }
         isRefreshing = false
-        lastRefresh = Date()
+        lastRefresh = now
         refreshTask = nil
         scheduleNextRead()
         scheduleResetNotifications()
@@ -146,7 +171,7 @@ final class UsageStore: ObservableObject {
     /// One-shot rather than repeating, because the gap changes with what we just read.
     private func scheduleNextRead() {
         timer?.invalidate()
-        let delay = RefreshPolicy.delay(isPanelOpen: isPanelOpen, resets: knownResets)
+        let delay = RefreshPolicy.delay(isPanelOpen: isPanelOpen, resets: knownResets, holdOffUntil: holdOffUntil)
         timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in self.refresh(force: true) }
@@ -267,6 +292,13 @@ final class UsageStore: ObservableObject {
         }
     }
 
+    /// "Couldn't refresh: …. Showing the numbers from 4m ago." when a provider's numbers
+    /// were kept through a failed read, or nil when they are current.
+    func staleNote(for provider: ProviderID, now: Date = Date()) -> String? {
+        guard let reason = staleReasons[provider], let snapshot = states[provider]?.snapshot else { return nil }
+        return "Couldn’t refresh: \(reason). Showing the numbers from \(Format.age(of: snapshot.capturedAt, from: now))."
+    }
+
     /// True when nothing on show could be read at all, which the icon draws as dashed.
     var nothingConnected: Bool {
         !visibleProviders.contains { states[$0]?.snapshot != nil }
@@ -306,13 +338,52 @@ final class UsageStore: ObservableObject {
         }
     }
 
-    /// Opens the provider's own sign-in, then keeps checking for a few minutes so the
-    /// row flips to signed in on its own once you finish in the browser.
+    /// Runs the provider's own sign-in behind the scenes (installing the tool first if
+    /// needed): the browser opens, you approve, and the row flips to signed in.
     func connect(_ account: AccountID) {
+        guard loginTasks[account] == nil else { return }
+        logins[account] = .starting
+        // Bound here rather than inside the Task: a captured weak var cannot be read from
+        // concurrently-executing code.
+        let onPhase: @Sendable (LoginRunner.Phase) -> Void = { [weak self] phase in
+            guard let self else { return }
+            Task { @MainActor in self.noteLoginPhase(account, phase) }
+        }
+        loginTasks[account] = Task { [weak self] in
+            let outcome = await Accounts.signIn(account, onPhase: onPhase)
+            guard let self else { return }
+            self.loginTasks[account] = nil
+            if outcome.succeeded {
+                self.logins[account] = nil
+                self.refreshAccounts(force: true)
+                self.refresh(force: true)
+            } else if Task.isCancelled {
+                self.logins[account] = nil
+            } else {
+                self.logins[account] = .failed(outcome.detail)
+            }
+        }
+    }
+
+    private func noteLoginPhase(_ account: AccountID, _ phase: LoginRunner.Phase) {
+        guard loginTasks[account] != nil else { return }
+        logins[account] = phase == .waitingBrowser ? .waitingBrowser : .starting
+    }
+
+    func cancelConnect(_ account: AccountID) {
+        loginTasks[account]?.cancel()
+        loginTasks[account] = nil
+        logins[account] = nil
+    }
+
+    /// The same sign-in in a visible Terminal window, then a watch for it to finish: the
+    /// way out when the hidden flow hits something that needs a person at the keyboard.
+    func connectInTerminal(_ account: AccountID) {
+        cancelConnect(account)
         Accounts.openLogin(account)
         loginWatch?.cancel()
         loginWatch = Task { [weak self] in
-            for _ in 0..<36 {
+            for _ in 0..<120 {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard !Task.isCancelled else { return }
                 let state = await Accounts.read(account)
@@ -328,6 +399,7 @@ final class UsageStore: ObservableObject {
     }
 
     func signOut(_ account: AccountID) {
+        cancelConnect(account)
         Task { [weak self] in
             await Accounts.signOut(account)
             guard let self else { return }
@@ -359,4 +431,11 @@ final class UsageStore: ObservableObject {
     private func format(_ percent: Double) -> String {
         "\(Int(percent.rounded()))%"
     }
+}
+
+/// Where a sign-in started from the panel has got to.
+enum LoginProgress: Equatable {
+    case starting
+    case waitingBrowser
+    case failed(String)
 }

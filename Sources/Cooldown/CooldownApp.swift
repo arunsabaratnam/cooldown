@@ -1,19 +1,143 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @main
-@MainActor
 struct CooldownApp: App {
-    @StateObject private var store = UsageStore()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
+    // Everything visible is AppKit-owned (the status item, its panel, the Settings
+    // window), so the one scene SwiftUI insists on is an empty one that never opens.
     var body: some Scene {
-        MenuBarExtra {
-            MenuContentView(store: store)
-        } label: {
-            MenuBarLabel(store: store)
-        }
-        .menuBarExtraStyle(.window)
+        SwiftUI.Settings { EmptyView() }
     }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var statusItem: StatusItemController?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        statusItem = StatusItemController(store: UsageStore())
+    }
+}
+
+/// The menu bar icon and the panel it opens.
+///
+/// This used to be a SwiftUI `MenuBarExtra`, but that window closes whenever the menu bar
+/// does, which with "Automatically hide and show the menu bar" turned on means the moment
+/// the pointer drifts down. This panel stays until you click the icon again, click
+/// somewhere else, or press Esc.
+@MainActor
+final class StatusItemController: NSObject {
+    static weak var shared: StatusItemController?
+
+    private let store: UsageStore
+    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let panel: FloatingPanel
+    private let hosting: NSHostingView<MenuContentView>
+    private var cancellables = Set<AnyCancellable>()
+    private var outsideClickMonitor: Any?
+    private var keyMonitor: Any?
+
+    init(store: UsageStore) {
+        self.store = store
+        hosting = NSHostingView(rootView: MenuContentView(store: store))
+        panel = FloatingPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 352, height: 400),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: true
+        )
+        super.init()
+        Self.shared = self
+
+        panel.contentView = hosting
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.level = .statusBar
+        panel.hidesOnDeactivate = false
+        panel.isMovable = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        if let button = item.button {
+            button.target = self
+            button.action = #selector(togglePanel)
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            button.imagePosition = .imageLeading
+        }
+
+        store.objectWillChange
+            .sink { [weak self] _ in
+                // objectWillChange fires before the change lands; read it on the next turn.
+                DispatchQueue.main.async { self?.refresh() }
+            }
+            .store(in: &cancellables)
+        refresh()
+    }
+
+    private func refresh() {
+        guard let button = item.button else { return }
+        button.image = MenuBarIconRenderer.icon(for: store)
+        let title = store.menuBarTitle
+        button.title = title.isEmpty ? "" : " " + title
+        button.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        button.setAccessibilityLabel(MenuBarIconRenderer.accessibilityText(for: store))
+        if panel.isVisible { fitPanel(anchoredTop: panel.frame.maxY) }
+    }
+
+    @objc private func togglePanel() {
+        panel.isVisible ? hidePanel() : showPanel()
+    }
+
+    private func showPanel() {
+        guard let button = item.button, let buttonWindow = button.window else { return }
+        store.panelAppeared()
+        let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        fitPanel(anchoredTop: buttonFrame.minY - 6, centeredOn: buttonFrame.midX, screen: buttonWindow.screen)
+        panel.makeKeyAndOrderFront(nil)
+        button.highlight(true)
+
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            Task { @MainActor in self?.hidePanel() }
+        }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 53 { // Esc
+                self?.hidePanel()
+                return nil
+            }
+            return event
+        }
+    }
+
+    func hidePanel() {
+        guard panel.isVisible else { return }
+        panel.orderOut(nil)
+        item.button?.highlight(false)
+        store.panelDisappeared()
+        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        outsideClickMonitor = nil
+        keyMonitor = nil
+    }
+
+    /// Sizes the panel to its content, keeping its top edge where it is.
+    private func fitPanel(anchoredTop top: CGFloat, centeredOn midX: CGFloat? = nil, screen: NSScreen? = nil) {
+        hosting.layoutSubtreeIfNeeded()
+        let size = hosting.fittingSize
+        let visible = (screen ?? panel.screen ?? NSScreen.main)?.visibleFrame ?? .zero
+        var x = midX.map { $0 - size.width / 2 } ?? panel.frame.minX
+        x = min(max(x, visible.minX + 8), visible.maxX - size.width - 8)
+        panel.setFrame(NSRect(x: x, y: top - size.height, width: size.width, height: size.height), display: true)
+    }
+}
+
+/// A borderless panel that can take clicks and key presses without making Cooldown the
+/// active app, so whatever you were working in keeps its focus.
+final class FloatingPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
 }
 
 /// The Settings window, kept by hand rather than as a SwiftUI `Settings` scene so the
@@ -26,6 +150,7 @@ final class SettingsWindowController {
 
     func show(_ pane: SettingsPane, store: UsageStore) {
         store.settingsPane = pane
+        StatusItemController.shared?.hidePanel()
         if window == nil {
             let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsWindow(store: store)))
             window.title = "Cooldown Settings"
@@ -39,46 +164,29 @@ final class SettingsWindowController {
     }
 }
 
-struct MenuBarLabel: View {
-    @ObservedObject var store: UsageStore
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(nsImage: icon)
-            if !store.menuBarTitle.isEmpty {
-                Text(store.menuBarTitle)
-                    .monospacedDigit()
-            }
-        }
-        .accessibilityLabel(accessibilityText)
-    }
-
-    private var tint: NSColor? {
-        guard store.settings.tintMenuBarIcon, store.settings.theme != .mono else { return nil }
-        return NSColor(store.settings.theme.theme.accent)
-    }
-
-    private var icon: NSImage {
-        if store.nothingConnected && store.lastRefresh != nil {
-            return MenuBarIconRenderer.notConnected(tint: tint)
-        }
-        switch store.settings.menuBarIcon {
-        case .ring:
-            return MenuBarIconRenderer.ring(fraction: store.tightestFiveHourFraction, tint: tint)
-        case .twinBars:
-            return MenuBarIconRenderer.bars(fractions: store.fiveHourFractions, tint: tint)
-        }
-    }
-
-    private var accessibilityText: String {
-        guard let fraction = store.tightestFiveHourFraction else { return "Cooldown" }
-        return "Cooldown, \(Int((fraction * 100).rounded()))% of the 5-hour window left"
-    }
-}
-
 /// Draws the 16 pt menu bar glyph. Untinted it is a template image, so macOS colours it
 /// to match the menu bar; tinted it takes the theme's accent and stops adapting.
 enum MenuBarIconRenderer {
+    @MainActor
+    static func icon(for store: UsageStore) -> NSImage {
+        let tint: NSColor? = store.settings.tintMenuBarIcon && store.settings.theme != .mono
+            ? NSColor(store.settings.theme.theme.accent)
+            : nil
+        if store.nothingConnected && store.lastRefresh != nil {
+            return notConnected(tint: tint)
+        }
+        switch store.settings.menuBarIcon {
+        case .ring: return ring(fraction: store.tightestFiveHourFraction, tint: tint)
+        case .twinBars: return bars(fractions: store.fiveHourFractions, tint: tint)
+        }
+    }
+
+    @MainActor
+    static func accessibilityText(for store: UsageStore) -> String {
+        guard let fraction = store.tightestFiveHourFraction else { return "Cooldown" }
+        return "Cooldown, \(Int((fraction * 100).rounded()))% of the 5-hour window left"
+    }
+
     private static let size = NSSize(width: 16, height: 16)
     private static let center = NSPoint(x: 8, y: 8)
     private static let radius: CGFloat = 6

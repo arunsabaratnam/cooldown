@@ -41,40 +41,81 @@ struct AccountRow: View {
     @Environment(\.theme) private var theme
 
     private var state: AccountState { store.accounts[account] ?? .unknown }
+    private var login: LoginProgress? { store.logins[account] }
 
     var body: some View {
-        HStack(spacing: 12) {
-            AccountLogo(account: account, size: logoSize)
-                .frame(width: logoSize + 4)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(account.displayName)
-                    .font(.system(size: 13, weight: .semibold))
-                if case .signedIn(let info) = state, let summary = info.summary {
-                    Text(summary)
-                        .font(.system(size: 11))
-                        .foregroundStyle(theme.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                AccountLogo(account: account, size: logoSize)
+                    .frame(width: logoSize + 4)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(account.displayName)
+                        .font(.system(size: 13, weight: .semibold))
+                    if case .signedIn(let info) = state, let summary = info.summary {
+                        Text(summary)
+                            .font(.system(size: 11))
+                            .foregroundStyle(theme.secondary)
+                    }
                 }
+                Spacer()
+                buttons
             }
-            Spacer()
-            button
+            if let status {
+                Text(status)
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, logoSize + 16)
+            }
+        }
+    }
+
+    /// The one line under the row while a sign-in is running, or after one failed.
+    private var status: String? {
+        switch login {
+        case .starting?:
+            if case .notInstalled = state {
+                return "Installing \(account.binaryName), then opening the sign-in. This can take a minute."
+            }
+            return "Opening \(account.displayName)’s sign-in…"
+        case .waitingBrowser?:
+            return "Finish signing in in your browser, then come back here."
+        case .failed(let detail)?:
+            return detail
+        case nil:
+            return nil
         }
     }
 
     @ViewBuilder
-    private var button: some View {
-        switch state {
-        case .signedIn:
+    private var buttons: some View {
+        switch (login, state) {
+        case (.failed?, _):
+            HStack(spacing: 8) {
+                Button("Use Terminal") { store.connectInTerminal(account) }
+                    .help("Runs the same sign-in in a Terminal window, where you can answer any prompt yourself.")
+                Button("Try again") { store.connect(account) }
+                    .buttonStyle(.borderedProminent)
+                    .tint(theme.button)
+            }
+        case (.some, _):
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Button("Cancel") { store.cancelConnect(account) }
+            }
+        case (nil, .signedIn):
             Button("Sign out") { store.signOut(account) }
                 .controlSize(.regular)
-        case .notInstalled:
-            Button("Connect") {}
-                .buttonStyle(.borderedProminent)
-                .disabled(true)
-                .help("Install the \(account.binaryName) command-line tool first.")
-        case .signedOut, .unknown:
+        case (nil, .notInstalled):
             Button("Connect") { store.connect(account) }
                 .buttonStyle(.borderedProminent)
                 .tint(theme.button)
+                .help("Installs \(account.binaryName), then signs you in through your browser.")
+        case (nil, .signedOut), (nil, .unknown):
+            Button("Connect") { store.connect(account) }
+                .buttonStyle(.borderedProminent)
+                .tint(theme.button)
+                .help("Signs you in to \(account.displayName) through your browser.")
         }
     }
 }

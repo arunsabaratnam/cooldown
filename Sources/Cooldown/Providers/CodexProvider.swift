@@ -15,15 +15,18 @@ struct CodexProvider: UsageProvider {
     let id: ProviderID = .codex
 
     func read() async -> ProviderState {
-        guard let binary = installedBinaryPath() else { return .notInstalled }
-
         var reasons: [String] = []
 
-        switch await readFromAppServer(binary: binary) {
-        case .success(let snapshot):
-            return .ok(snapshot)
-        case .failure(let reason):
-            reasons.append(reason)
+        let binary = installedBinaryPath()
+        if let binary {
+            switch await readFromAppServer(binary: binary) {
+            case .success(let snapshot):
+                return .ok(snapshot)
+            case .failure(let reason):
+                reasons.append(reason)
+            }
+        } else {
+            reasons.append("codex is not on the PATH the app can see")
         }
 
         switch readFromSessionRollouts() {
@@ -33,6 +36,8 @@ struct CodexProvider: UsageProvider {
             reasons.append(reason)
         }
 
+        // Neither the CLI nor a sign-in: there is nothing here to read from.
+        if binary == nil, !Accounts.codexAuthFileExists { return .notInstalled }
         return .unavailable(reason: reasons.joined(separator: "; "))
     }
 

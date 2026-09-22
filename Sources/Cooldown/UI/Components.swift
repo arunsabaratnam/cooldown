@@ -60,7 +60,8 @@ struct LogoShape: Shape {
 struct AccountLogo: View {
     let account: AccountID
     var size: CGFloat = 18
-    @Environment(\.theme) private var theme
+    // The panel sets this to match its theme; Settings leaves it as the system's.
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         switch account {
@@ -70,7 +71,7 @@ struct AccountLogo: View {
                 .frame(width: size, height: size)
         case .codex:
             LogoShape(path: LogoPaths.openAI)
-                .fill(theme.text)
+                .fill(colorScheme == .dark ? Color.white : Color(hex: 0x1D1D1F))
                 .frame(width: size, height: size)
         case .chatgpt:
             RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)

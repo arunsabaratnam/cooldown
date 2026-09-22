@@ -17,16 +17,17 @@ struct ClaudeProvider: UsageProvider {
     static let statusLineCachePath = "\(NSHomeDirectory())/.cooldown/claude-statusline.json"
 
     func read() async -> ProviderState {
-        guard installedBinaryPath() != nil else { return .notInstalled }
-
         var reasons: [String] = []
+        var rateLimited = false
 
-        if let token = await OAuthToken.load() {
+        let token = await OAuthToken.load()
+        if let token {
             switch await readFromUsageAPI(token: token) {
             case .success(let snapshot):
                 return .ok(snapshot)
-            case .failure(let reason):
+            case .failure(let reason, let limited):
                 reasons.append(reason)
+                rateLimited = limited
             }
         } else {
             reasons.append("no Claude Code OAuth token found (Keychain or ~/.claude/.credentials.json)")
@@ -37,14 +38,16 @@ struct ClaudeProvider: UsageProvider {
         }
         reasons.append("no status line snapshot yet — run scripts/install-claude-statusline.sh")
 
-        return .unavailable(reason: reasons.joined(separator: "; "))
+        // Neither a credential nor the CLI: there is nothing here to read from.
+        if token == nil, installedBinaryPath() == nil { return .notInstalled }
+        return .unavailable(reason: reasons.joined(separator: "; "), rateLimited: rateLimited)
     }
 
     // MARK: - Source 1: the usage endpoint
 
     private enum ReadResult {
         case success(ProviderSnapshot)
-        case failure(String)
+        case failure(String, rateLimited: Bool = false)
     }
 
     private func readFromUsageAPI(token: String) async -> ReadResult {
@@ -69,6 +72,11 @@ struct ClaudeProvider: UsageProvider {
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             if http.statusCode == 401 || http.statusCode == 403 {
                 return .failure("usage endpoint rejected the token (\(http.statusCode)) — sign in to Claude Code again")
+            }
+            // The endpoint answers 429 to a burst of reads and clears after a minute or so
+            // of quiet. Its Retry-After header says 0, so the store's own hold-off applies.
+            if http.statusCode == 429 {
+                return .failure("Anthropic rate limited the usage check (429), so it will be retried more slowly", rateLimited: true)
             }
             return .failure("usage endpoint returned \(http.statusCode)")
         }
@@ -157,7 +165,7 @@ struct ClaudeProvider: UsageProvider {
 
 /// Claude Code keeps its OAuth token in the login Keychain on macOS, and in a dotfile
 /// on other platforms / older installs. We try both.
-private enum OAuthToken {
+enum OAuthToken {
     static func load() async -> String? {
         if let token = await fromKeychain() { return token }
         return fromCredentialsFile()

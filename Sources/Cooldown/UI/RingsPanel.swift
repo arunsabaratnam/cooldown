@@ -34,13 +34,14 @@ struct RingsPanel: View {
         }
     }
 
-    private var unreadable: [(ProviderID, String)] {
+    /// One line per provider that has no numbers, or whose numbers are older than they look.
+    private var notes: [(ProviderID, String)] {
         store.visibleProviders.compactMap { provider in
             switch store.states[provider] ?? .neverRead {
-            case .ok: return nil
+            case .ok: return store.staleNote(for: provider, now: now).map { (provider, $0) }
             case .neverRead: return (provider, "Not read yet.")
             case .notInstalled: return (provider, "\(provider.binaryName) isn’t installed, so there’s nothing to read.")
-            case .unavailable(let reason): return (provider, "No numbers right now: \(reason).")
+            case .unavailable(let reason, _): return (provider, "No numbers right now: \(reason).")
             }
         }
     }
@@ -51,7 +52,7 @@ struct RingsPanel: View {
                 heroCard(hero)
                 timeline
             }
-            if !others.isEmpty || !unreadable.isEmpty {
+            if !others.isEmpty || !notes.isEmpty {
                 list
             }
         }
@@ -175,8 +176,8 @@ struct RingsPanel: View {
                 if index > 0 { divider }
                 row(entry)
             }
-            ForEach(unreadable, id: \.0) { provider, message in
-                if !others.isEmpty || provider != unreadable.first?.0 { divider }
+            ForEach(notes, id: \.0) { provider, message in
+                if !others.isEmpty || provider != notes.first?.0 { divider }
                 HStack(alignment: .top, spacing: 10) {
                     AccountLogo(account: provider.account, size: 16)
                     VStack(alignment: .leading, spacing: 2) {

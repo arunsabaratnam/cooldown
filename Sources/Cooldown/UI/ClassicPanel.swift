@@ -48,11 +48,14 @@ private struct ProviderCard: View {
                     ForEach(snapshot.sortedWindows) { window in
                         WindowRow(window: window, store: store, now: now)
                     }
+                    if let note = store.staleNote(for: provider, now: now) {
+                        NoDataRow(message: note)
+                    }
                 case .notInstalled:
                     NoDataRow(message: "\(provider.binaryName) isn’t installed, so there’s nothing to read.")
                 case .neverRead:
                     NoDataRow(message: "Not read yet.")
-                case .unavailable(let reason):
+                case .unavailable(let reason, _):
                     NoDataRow(message: "No numbers right now: \(reason).")
                 }
             }

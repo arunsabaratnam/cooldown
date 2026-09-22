@@ -32,8 +32,7 @@ struct MenuContentView: View {
         .environment(\.density, store.settings.density)
         .environment(\.colorScheme, theme.isDark ? .dark : .light)
         .tint(theme.button)
-        .onAppear { store.panelAppeared() }
-        .onDisappear { store.panelDisappeared() }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     /// Nothing on show could be read and nobody is signed in: offer the sign-ins

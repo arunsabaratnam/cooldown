@@ -116,15 +116,45 @@ struct ProviderSnapshot: Equatable {
 
 /// The result of a read. `unavailable` carries the reason, which the menu shows verbatim:
 /// we never substitute a plausible-looking number for one we could not read.
+///
+/// `rateLimited` marks a failure the source brought on itself by being asked too often,
+/// so the store knows to hold off rather than ask again on the usual cadence.
 enum ProviderState: Equatable {
     case notInstalled
     case neverRead
-    case unavailable(reason: String)
+    case unavailable(reason: String, rateLimited: Bool = false)
     case ok(ProviderSnapshot)
 
     var snapshot: ProviderSnapshot? {
         if case .ok(let snapshot) = self { return snapshot }
         return nil
+    }
+
+    var isRateLimited: Bool {
+        if case .unavailable(_, let rateLimited) = self { return rateLimited }
+        return false
+    }
+
+    /// What to show after a read, given what was on show before it.
+    ///
+    /// Quota only moves when the user actually uses the tool, so numbers read a few minutes
+    /// ago are still right when a read fails for a transient reason (a 429, a dropped
+    /// connection). Those are kept, with the failure as `staleReason` so the panel can say
+    /// so. They are dropped again once one of their windows has reset, because from then on
+    /// they would be wrong, and a read that says the tool is gone is never papered over.
+    static func merge(
+        previous: ProviderState?,
+        fresh: ProviderState,
+        now: Date
+    ) -> (state: ProviderState, staleReason: String?) {
+        guard
+            case .unavailable(let reason, _) = fresh,
+            case .ok(let snapshot)? = previous,
+            !snapshot.windows.contains(where: { window in
+                window.resetsAt.map { $0 <= now } ?? false
+            })
+        else { return (fresh, nil) }
+        return (previous ?? fresh, reason)
     }
 }
 

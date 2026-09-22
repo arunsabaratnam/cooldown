@@ -73,14 +73,29 @@ enum AccountState: Equatable {
 }
 
 enum Accounts {
+    /// The CLI is the best source for who is signed in, but not the only one: each tool's
+    /// stored credential is enough to know *that* someone is, so a PATH the app cannot see
+    /// does not turn a working sign-in into "not installed".
     static func read(_ account: AccountID) async -> AccountState {
-        guard let binary = ShellEnvironment.shared.locate(account.binaryName) else {
-            return .notInstalled
-        }
+        let binary = ShellEnvironment.shared.locate(account.binaryName)
         switch account {
-        case .claude: return await readClaude(binary: binary)
-        case .codex, .chatgpt: return readCodex()
+        case .claude:
+            if let binary { return await readClaude(binary: binary) }
+            if await OAuthToken.load() != nil { return .signedIn(AccountInfo(email: nil, plan: nil)) }
+            return .notInstalled
+        case .codex, .chatgpt:
+            let state = readCodex()
+            if binary == nil, !state.isSignedIn { return .notInstalled }
+            return state
         }
+    }
+
+    static var codexAuthFileExists: Bool {
+        FileManager.default.fileExists(atPath: codexHome.appendingPathComponent("auth.json").path)
+    }
+
+    private static var codexHome: URL {
+        URL(fileURLWithPath: ProcessInfo.processInfo.environment["CODEX_HOME"] ?? "\(NSHomeDirectory())/.codex")
     }
 
     // MARK: - Claude
@@ -105,8 +120,7 @@ enum Accounts {
     /// is a JWT whose claims carry the email and the ChatGPT plan. We only read those two
     /// claims; nothing is sent anywhere.
     private static func readCodex() -> AccountState {
-        let home = ProcessInfo.processInfo.environment["CODEX_HOME"] ?? "\(NSHomeDirectory())/.codex"
-        let url = URL(fileURLWithPath: home).appendingPathComponent("auth.json")
+        let url = codexHome.appendingPathComponent("auth.json")
         guard
             let data = try? Data(contentsOf: url),
             let parsed = try? JSONSerialization.jsonObject(with: data),
@@ -147,17 +161,64 @@ enum Accounts {
 
     // MARK: - Signing in and out
 
-    /// Signing in is the provider's own browser flow, which needs a terminal to run in, so
-    /// we hand it to Terminal rather than pretending to do it silently.
+    /// The tool's own sign-in command. Both open the browser themselves and store the
+    /// credential where the tool expects it, so the app never handles a token.
+    static func loginCommand(for account: AccountID, binary: String) -> [String] {
+        switch account {
+        case .claude: return [binary, "auth", "login", "--claudeai"]
+        case .codex, .chatgpt: return [binary, "login"]
+        }
+    }
+
+    /// Runs the sign-in under a hidden pseudo-terminal (installing the tool first when it
+    /// is missing), so all the user sees is the browser. See `LoginRunner`.
+    static func signIn(
+        _ account: AccountID,
+        onPhase: @escaping @Sendable (LoginRunner.Phase) -> Void
+    ) async -> LoginRunner.Outcome {
+        var binary = ShellEnvironment.shared.locate(account.binaryName)
+        if binary == nil {
+            let install = await LoginRunner.run(
+                command: ["/bin/zsh", "-lc", installCommand(for: account)],
+                timeout: 600
+            )
+            guard install.succeeded else {
+                return LoginRunner.Outcome(succeeded: false, detail: "Installing \(account.binaryName) failed. \(install.detail)")
+            }
+            binary = ShellEnvironment.shared.locate(account.binaryName)
+        }
+        guard let binary else {
+            return LoginRunner.Outcome(succeeded: false, detail: "\(account.binaryName) was installed but is not on your PATH yet. Open a new Terminal window and try again.")
+        }
+        return await LoginRunner.run(
+            command: loginCommand(for: account, binary: binary),
+            successMarkers: LoginRunner.signInMarkers,
+            timeout: 300,
+            onPhase: onPhase
+        )
+    }
+
+    /// The same sign-in, in a Terminal window the user can see: the fallback for when the
+    /// hidden flow needs something only a person at a keyboard can answer.
     static func openLogin(_ account: AccountID) {
-        guard let binary = ShellEnvironment.shared.locate(account.binaryName) else { return }
-        let command = ([binary] + account.loginArguments).map(shellQuote).joined(separator: " ")
+        let login: String
+        var steps: [String] = []
+        if let binary = ShellEnvironment.shared.locate(account.binaryName) {
+            login = ([binary] + account.loginArguments).map(shellQuote).joined(separator: " ")
+        } else {
+            steps.append("echo \"\(account.binaryName) isn’t installed yet, so installing it first…\"")
+            steps.append("echo")
+            steps.append(installCommand(for: account) + " || { echo; echo \"Install failed. See the message above.\"; exit 1; }")
+            steps.append("echo")
+            login = ([account.binaryName] + account.loginArguments).map(shellQuote).joined(separator: " ")
+        }
         let script = """
         #!/bin/zsh -l
         clear
-        echo "Signing in to \(account.displayName) for Cooldown…"
+        echo "Connecting \(account.displayName) to Cooldown…"
         echo
-        \(command)
+        \(steps.joined(separator: "\n"))
+        \(login)
         echo
         echo "Done. You can close this window."
         """
@@ -170,6 +231,20 @@ enum Accounts {
             return
         }
         NSWorkspace.shared.open(url)
+    }
+
+    /// Each tool's own documented install: Anthropic's installer script for Claude Code,
+    /// and npm (or Homebrew when there is no npm) for Codex.
+    static func installCommand(for account: AccountID) -> String {
+        switch account {
+        case .claude:
+            return "curl -fsSL https://claude.ai/install.sh | bash && export PATH=\"$HOME/.local/bin:$PATH\""
+        case .codex, .chatgpt:
+            if ShellEnvironment.shared.locate("npm") != nil {
+                return "npm install -g @openai/codex"
+            }
+            return "brew install --cask codex"
+        }
     }
 
     static func signOut(_ account: AccountID) async {
