@@ -14,7 +14,7 @@ before you sit down to work.**
 ## What it looks like
 
 <p align="center">
-  <img src="assets/demo.gif" alt="Cooldown in use: the ring in the menu bar opens a panel of 5-hour windows, then the settings window moves through the menu bar icon, the panel layouts and the six themes" width="552">
+  <img src="assets/demo.gif" alt="Cooldown in use: the ring in the menu bar opens a panel of 5-hour windows, then the settings window moves through the menu bar icon, the panel layouts and the six themes" width="736">
 </p>
 
 It sits in the menu bar as a ring that drains as the tightest 5-hour window runs down.
