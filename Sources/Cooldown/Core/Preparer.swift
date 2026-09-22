@@ -18,14 +18,12 @@ enum Preparer {
             )
         }
 
-        // From the home folder, not wherever Finder launched the app from (usually `/`),
-        // so the CLIs see the same place a fresh Terminal window would.
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let result = await Shell.runAsync(
             executable: shell,
             arguments: ["-l", "-c", trimmed],
             timeout: 120,
-            currentDirectory: NSHomeDirectory()
+            currentDirectory: startDirectory
         )
 
         if let failure = result.launchFailure {
@@ -53,6 +51,18 @@ enum Preparer {
             detail: summarise(result.out),
             at: Date()
         )
+    }
+
+    /// An empty folder of our own for the commands to start in. The CLIs read whatever
+    /// folder they start in for project context, so they cannot start where Finder put
+    /// the app (the root of the disk), and starting them in the home folder had Codex
+    /// walk into ~/Music, which made macOS ask whether Cooldown may read Apple Music.
+    static var startDirectory: String {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        let directory = base.appendingPathComponent("Cooldown/start", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.path
     }
 
     private static func summarise(_ text: String) -> String {
