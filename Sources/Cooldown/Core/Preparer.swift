@@ -18,11 +18,14 @@ enum Preparer {
             )
         }
 
+        // From the home folder, not wherever Finder launched the app from (usually `/`),
+        // so the CLIs see the same place a fresh Terminal window would.
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let result = await Shell.runAsync(
             executable: shell,
             arguments: ["-l", "-c", trimmed],
-            timeout: 120
+            timeout: 120,
+            currentDirectory: NSHomeDirectory()
         )
 
         if let failure = result.launchFailure {

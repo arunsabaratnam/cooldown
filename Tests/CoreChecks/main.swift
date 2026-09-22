@@ -50,6 +50,14 @@ print("ShellEnvironment.mergedPath")
 check(ShellEnvironment.mergedPath(["/a", "/b", "/a", "", "/c"]) == "/a:/b:/c", "keeps each directory once, in order, and drops empties")
 check(ShellEnvironment.mergedPath([]) == "", "empty in, empty out")
 
+print("Settings.prepareCommand")
+var settings = Settings()
+check(settings.prepareCommand(for: .codex).contains("--skip-git-repo-check"), "the Codex default skips the git repo check")
+settings.prepareCommands[.codex] = #"codex exec "reply with ok""#
+check(settings.prepareCommand(for: .codex) == Settings.defaultPrepareCommands[.codex], "an older default saved to disk reads as the current one")
+settings.prepareCommands[.codex] = "codex exec --model o3 hi"
+check(settings.prepareCommand(for: .codex) == "codex exec --model o3 hi", "a hand-edited command is left alone")
+
 print("ProviderState.merge")
 let good = ProviderState.ok(snapshot(resetsIn: 3600))
 let limited = ProviderState.unavailable(reason: "usage endpoint returned 429", rateLimited: true)

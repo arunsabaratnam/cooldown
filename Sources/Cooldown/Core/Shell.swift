@@ -131,11 +131,15 @@ enum Shell {
         executable: String,
         arguments: [String],
         stdin: String? = nil,
-        timeout: TimeInterval = 20
+        timeout: TimeInterval = 20,
+        currentDirectory: String? = nil
     ) -> Result {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        if let currentDirectory {
+            process.currentDirectoryURL = URL(fileURLWithPath: currentDirectory)
+        }
 
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = ShellEnvironment.shared.path
@@ -212,7 +216,8 @@ extension Shell {
         executable: String,
         arguments: [String],
         stdin: String? = nil,
-        timeout: TimeInterval = 20
+        timeout: TimeInterval = 20,
+        currentDirectory: String? = nil
     ) async -> Result {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
@@ -221,7 +226,8 @@ extension Shell {
                         executable: executable,
                         arguments: arguments,
                         stdin: stdin,
-                        timeout: timeout
+                        timeout: timeout,
+                        currentDirectory: currentDirectory
                     )
                 )
             }

@@ -6,6 +6,8 @@ cd "$(dirname "$0")/.."
 OUT="$(mktemp -d)/core-checks"
 swiftc -O \
   Sources/Cooldown/Core/Models.swift \
+  Sources/Cooldown/Core/Settings.swift \
+  Sources/Cooldown/UI/Theme.swift \
   Sources/Cooldown/Core/RefreshPolicy.swift \
   Sources/Cooldown/Core/Shell.swift \
   Sources/Cooldown/Core/LoginRunner.swift \

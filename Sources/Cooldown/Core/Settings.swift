@@ -83,9 +83,17 @@ struct Settings: Codable, Equatable {
     var notifyOnReset: Bool = false
     var launchAtLogin: Bool = false
 
+    /// Codex refuses to run outside a git repository unless told not to check, and the
+    /// app starts these from the home folder, which is rarely one.
     static let defaultPrepareCommands: [ProviderID: String] = [
         .claude: #"claude -p "reply with ok""#,
-        .codex: #"codex exec "reply with ok""#,
+        .codex: #"codex exec --skip-git-repo-check "reply with ok""#,
+    ]
+
+    /// Defaults from earlier versions. A saved command that still matches one of these
+    /// was never edited by hand, so it is read as the current default instead.
+    static let outdatedPrepareCommands: [ProviderID: [String]] = [
+        .codex: [#"codex exec "reply with ok""#],
     ]
 
     static let lowThresholdChoices = [10, 20, 30, 40]
@@ -163,6 +171,9 @@ struct Settings: Codable, Equatable {
     }
 
     func prepareCommand(for provider: ProviderID) -> String {
-        prepareCommands[provider] ?? Self.defaultPrepareCommands[provider] ?? ""
+        let fallback = Self.defaultPrepareCommands[provider] ?? ""
+        guard let saved = prepareCommands[provider] else { return fallback }
+        if Self.outdatedPrepareCommands[provider]?.contains(saved) == true { return fallback }
+        return saved
     }
 }
