@@ -9,12 +9,26 @@ final class UsageStore: ObservableObject {
     @Published private(set) var lastRefresh: Date?
     @Published private(set) var preparing: Set<ProviderID> = []
     @Published private(set) var recentOutcomes: [PrepareOutcome] = []
+    @Published private(set) var accounts: [AccountID: AccountState] = [:]
+    /// Which Settings pane is showing, so the gear menu can open straight to one.
+    @Published var settingsPane: SettingsPane = .general
     @Published var settings: Settings {
         didSet {
             guard settings != oldValue else { return }
             settings.save()
             if settings.enabledProviders != oldValue.enabledProviders {
                 refresh(force: true)
+            }
+            if settings.launchAtLogin != oldValue.launchAtLogin {
+                let actual = LoginItem.set(settings.launchAtLogin)
+                if actual != settings.launchAtLogin, Self.fixture == nil {
+                    // macOS said no; show the switch the way it really is.
+                    DispatchQueue.main.async { self.settings.launchAtLogin = actual }
+                }
+            }
+            if settings.notifyOnReset != oldValue.notifyOnReset {
+                if settings.notifyOnReset { ResetNotifier.requestPermission() }
+                scheduleResetNotifications()
             }
         }
     }
@@ -27,11 +41,27 @@ final class UsageStore: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var isPanelOpen = false
     private var wakeObserver: NSObjectProtocol?
+    private var loginWatch: Task<Void, Never>?
+
+    private var lastAccountsRefresh: Date?
+
+    /// `COOLDOWN_FIXTURE=codex|claude|both|none|empty` swaps the real reads for sample
+    /// numbers, so every state of the panel can be looked at on a machine that has only
+    /// one of the CLIs, or neither. Debug builds only: a release build never shows a
+    /// number it did not read.
+    #if DEBUG
+    static let fixture = ProcessInfo.processInfo.environment["COOLDOWN_FIXTURE"]
+    #else
+    static let fixture: String? = nil
+    #endif
 
     init() {
         self.settings = Settings.load()
         for provider in ProviderID.allCases {
             states[provider] = .neverRead
+        }
+        for account in AccountID.allCases {
+            accounts[account] = .unknown
         }
         // A Mac that has been asleep comes back with numbers that are hours stale and a
         // timer that did not fire while it slept, so treat waking as a reason to read.
@@ -46,6 +76,7 @@ final class UsageStore: ObservableObject {
             Task { @MainActor in self.refresh(force: true) }
         }
         refresh(force: true)
+        refreshAccounts()
     }
 
     deinit {
@@ -61,6 +92,7 @@ final class UsageStore: ObservableObject {
         isPanelOpen = true
         refresh()
         scheduleNextRead()
+        refreshAccounts()
     }
 
     func panelDisappeared() {
@@ -78,6 +110,13 @@ final class UsageStore: ObservableObject {
         if !force, let lastRefresh, Date().timeIntervalSince(lastRefresh) < RefreshPolicy.freshEnough {
             return
         }
+        #if DEBUG
+        if let fixture = Self.fixture {
+            for (id, state) in Fixtures.states(fixture) { states[id] = state }
+            lastRefresh = Date()
+            return
+        }
+        #endif
         isRefreshing = true
         let selected: [(ProviderID, any UsageProvider)] = ProviderID.allCases
             .filter { settings.enabledProviders.contains($0) }
@@ -101,6 +140,7 @@ final class UsageStore: ObservableObject {
         lastRefresh = Date()
         refreshTask = nil
         scheduleNextRead()
+        scheduleResetNotifications()
     }
 
     /// One-shot rather than repeating, because the gap changes with what we just read.
@@ -123,30 +163,53 @@ final class UsageStore: ObservableObject {
 
     // MARK: - Preparing
 
-    /// The button is only worth pressing while the 5-hour window is still whole: once the
-    /// clock is running, starting it again just spends quota. So it is live only when every
-    /// 5-hour bar we can read is at 100%, and only when at least one of them could be read.
+    /// A 5-hour window is only worth starting while it is still whole: once its clock is
+    /// running, starting it again just spends quota. So the button offers exactly the
+    /// providers whose 5-hour window we can read and is at 100%.
+    var startableProviders: [ProviderID] {
+        visibleProviders.filter { states[$0]?.snapshot?.window(.fiveHour)?.isFull == true }
+    }
+
     var canPrepare: Bool {
-        guard preparing.isEmpty, !visibleProviders.isEmpty else { return false }
-        let fiveHourWindows = visibleProviders.compactMap { states[$0]?.snapshot?.window(.fiveHour) }
-        guard !fiveHourWindows.isEmpty else { return false }
-        return fiveHourWindows.allSatisfy(\.isFull)
+        preparing.isEmpty && !startableProviders.isEmpty
     }
 
-    /// Shown on hover, so the button can explain itself without putting a paragraph in the panel.
-    var prepareHint: String {
-        if !preparing.isEmpty { return "Starting the cooldown…" }
-        if visibleProviders.isEmpty { return "No providers are switched on." }
-        let fiveHourWindows = visibleProviders.compactMap { states[$0]?.snapshot?.window(.fiveHour) }
-        if fiveHourWindows.isEmpty { return "No 5-hour window has been read yet." }
-        if !fiveHourWindows.allSatisfy(\.isFull) { return "The 5-hour window is already running." }
-        return "Sends one short throwaway prompt now, so the 5-hour clock is already running when you sit down. It shifts the window earlier; it does not add quota."
+    /// "Start Codex cooldown", "Start both cooldowns", or what to say when there is nothing to start.
+    var prepareLabel: String {
+        if !preparing.isEmpty { return "Starting…" }
+        let startable = startableProviders
+        switch startable.count {
+        case 0:
+            let anyRead = visibleProviders.contains { states[$0]?.snapshot?.window(.fiveHour) != nil }
+            return anyRead ? "Cooldowns running" : "Start cooldown"
+        case 1: return "Start \(startable[0].displayName) cooldown"
+        case 2: return "Start both cooldowns"
+        default: return "Start all cooldowns"
+        }
     }
 
-    /// Runs the prepare command for every enabled provider that has one.
+    /// The one line under the button.
+    func prepareNote(now: Date = Date()) -> String {
+        let startable = startableProviders
+        let endsAt = Format.clockTime(now.addingTimeInterval(5 * 3600))
+        switch startable.count {
+        case 0:
+            if visibleProviders.isEmpty { return "No providers are switched on." }
+            let resets = visibleProviders
+                .compactMap { states[$0]?.snapshot?.window(.fiveHour)?.resetsAt }
+                .filter { $0 > now }
+            if let next = resets.min() { return "Next reset at \(Format.clockTime(next))." }
+            return "No 5-hour window has been read yet."
+        case 1: return "\(startable[0].displayName) resets by \(endsAt) if you start it now."
+        case 2: return "Both reset by \(endsAt) if you start them now."
+        default: return "They all reset by \(endsAt) if you start them now."
+        }
+    }
+
+    /// Runs the start command for each provider whose window is full, and no others.
     func prepareAll() {
         guard canPrepare else { return }
-        for provider in ProviderID.allCases where settings.enabledProviders.contains(provider) {
+        for provider in startableProviders {
             prepare(provider)
         }
     }
@@ -154,6 +217,11 @@ final class UsageStore: ObservableObject {
     func prepare(_ provider: ProviderID) {
         guard !preparing.contains(provider) else { return }
         preparing.insert(provider)
+        if Self.fixture != nil {
+            let outcome = PrepareOutcome(provider: provider, succeeded: true, detail: "fixture", at: Date())
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.finishPreparing(provider, outcome: outcome) }
+            return
+        }
         let command = settings.prepareCommand(for: provider)
         Task { [weak self] in
             let outcome = await Preparer.prepare(provider: provider, command: command)
@@ -184,24 +252,102 @@ final class UsageStore: ObservableObject {
         ProviderID.allCases.filter { settings.enabledProviders.contains($0) }
     }
 
-    /// The text drawn in the menu bar.
-    var menuBarTitle: String {
-        switch settings.menuBarDisplay {
-        case .iconOnly:
-            return ""
-        case .tightest:
-            let values = visibleProviders.compactMap { fiveHourValue(for: $0) }
-            guard let lowest = values.min() else { return "–" }
-            return format(lowest)
-        case .allProviders:
-            let parts = visibleProviders.map { provider -> String in
-                guard let value = fiveHourValue(for: provider) else {
-                    return "\(provider.shortTag) –"
-                }
-                return "\(provider.shortTag) \(format(value))"
-            }
-            return parts.isEmpty ? "–" : parts.joined(separator: "  ")
+    /// The tightest 5-hour window on show, as a fraction left (0...1), or nil before any read.
+    var tightestFiveHourFraction: Double? {
+        visibleProviders
+            .compactMap { states[$0]?.snapshot?.window(.fiveHour)?.remainingPercent }
+            .min()
+            .map { min(1, max(0, $0 / 100)) }
+    }
+
+    /// Each provider's 5-hour fraction left, for the twin-bar icon.
+    var fiveHourFractions: [Double?] {
+        visibleProviders.map { provider in
+            states[provider]?.snapshot?.window(.fiveHour).map { min(1, max(0, $0.remainingPercent / 100)) }
         }
+    }
+
+    /// True when nothing on show could be read at all, which the icon draws as dashed.
+    var nothingConnected: Bool {
+        !visibleProviders.contains { states[$0]?.snapshot != nil }
+    }
+
+    /// The number next to the icon, when the user has asked for one.
+    var menuBarTitle: String {
+        guard settings.showPercentInMenuBar else { return "" }
+        let values = visibleProviders.compactMap { fiveHourValue(for: $0) }
+        guard let lowest = values.min() else { return "–" }
+        return format(lowest)
+    }
+
+    // MARK: - Accounts
+
+    /// Account details barely change, and reading Claude's means starting its CLI, so the
+    /// panel opening only re-reads them once a minute. Sign-in and sign-out force it.
+    func refreshAccounts(force: Bool = false) {
+        if !force, let lastAccountsRefresh, Date().timeIntervalSince(lastAccountsRefresh) < 60 { return }
+        lastAccountsRefresh = Date()
+        if Self.fixture != nil {
+            accounts[.claude] = .signedIn(AccountInfo(email: "you@example.com", plan: "Max"))
+            accounts[.codex] = .signedOut
+            accounts[.chatgpt] = .signedOut
+            return
+        }
+        Task { [weak self] in
+            var results: [(AccountID, AccountState)] = []
+            await withTaskGroup(of: (AccountID, AccountState).self) { group in
+                for account in AccountID.allCases {
+                    group.addTask { (account, await Accounts.read(account)) }
+                }
+                for await result in group { results.append(result) }
+            }
+            guard let self else { return }
+            for (id, state) in results { self.accounts[id] = state }
+        }
+    }
+
+    /// Opens the provider's own sign-in, then keeps checking for a few minutes so the
+    /// row flips to signed in on its own once you finish in the browser.
+    func connect(_ account: AccountID) {
+        Accounts.openLogin(account)
+        loginWatch?.cancel()
+        loginWatch = Task { [weak self] in
+            for _ in 0..<36 {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard !Task.isCancelled else { return }
+                let state = await Accounts.read(account)
+                guard let self else { return }
+                self.accounts[account] = state
+                if state.isSignedIn {
+                    self.refreshAccounts(force: true)
+                    self.refresh(force: true)
+                    return
+                }
+            }
+        }
+    }
+
+    func signOut(_ account: AccountID) {
+        Task { [weak self] in
+            await Accounts.signOut(account)
+            guard let self else { return }
+            self.refreshAccounts(force: true)
+            self.refresh(force: true)
+        }
+    }
+
+    // MARK: - Notifications
+
+    private func scheduleResetNotifications() {
+        guard Self.fixture == nil else { return }
+        let resets: [(ProviderID, Date)] = visibleProviders.compactMap { provider in
+            guard let window = states[provider]?.snapshot?.window(.fiveHour),
+                  let resetsAt = window.resetsAt,
+                  !window.isFull
+            else { return nil }
+            return (provider, resetsAt)
+        }
+        ResetNotifier.schedule(resets, enabled: settings.notifyOnReset)
     }
 
     /// Percent remaining (or used, per settings) in the 5-hour window, when we know it.

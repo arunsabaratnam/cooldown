@@ -43,7 +43,7 @@ struct UsageWindow: Equatable, Identifiable {
             switch self {
             case .fiveHour: return "5-hour"
             case .weekly: return "Weekly"
-            case .weeklySecondary: return "Weekly (large model)"
+            case .weeklySecondary: return "Weekly · Opus"
             case .spend: return "Spend"
             }
         }
@@ -77,6 +77,22 @@ struct UsageWindow: Equatable, Identifiable {
     /// it, so "full" always means the same thing to the eye and to the button.
     var isFull: Bool {
         Int(remainingPercent.rounded()) >= 100
+    }
+
+    /// How long a window of this kind lasts, where that is fixed.
+    var length: TimeInterval? {
+        switch kind {
+        case .fiveHour: return 5 * 3600
+        case .weekly, .weeklySecondary: return 7 * 24 * 3600
+        case .spend: return nil
+        }
+    }
+
+    /// When the running window began, worked back from its reset. Nil when we were not
+    /// told a reset time, rather than guessing one.
+    var startedAt: Date? {
+        guard let resetsAt, let length else { return nil }
+        return resetsAt.addingTimeInterval(-length)
     }
 }
 

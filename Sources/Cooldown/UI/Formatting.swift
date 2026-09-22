@@ -32,10 +32,21 @@ enum Format {
         "\(Int(value.rounded()))%"
     }
 
-    /// Green while there is room, amber when it is getting close, red when it is nearly gone.
-    static func tint(forRemaining remaining: Double) -> Color {
-        if remaining <= 10 { return .red }
-        if remaining <= 25 { return .orange }
-        return .green
+    /// "11:42 PM", in the user's own clock style.
+    static func clockTime(_ date: Date) -> String {
+        date.formatted(date: .omitted, time: .shortened)
+    }
+
+    /// "Thu 9:00 AM" for anything past today, "11:42 PM" for today.
+    static func resetMoment(_ date: Date, now: Date = Date()) -> String {
+        if Calendar.current.isDate(date, inSameDayAs: now) { return clockTime(date) }
+        let day = date.formatted(.dateTime.weekday(.abbreviated))
+        return "\(day) \(clockTime(date))"
+    }
+
+    /// "3h 12m", without the "in", for when the sentence supplies its own.
+    static func duration(until date: Date, from now: Date = Date()) -> String {
+        let text = countdown(to: date, from: now)
+        return text.hasPrefix("in ") ? String(text.dropFirst(3)) : text
     }
 }
