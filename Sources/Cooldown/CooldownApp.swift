@@ -56,7 +56,10 @@ final class StatusItemController: NSObject {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
-        panel.level = .statusBar
+        // Not `.statusBar`: with "Automatically hide and show the menu bar" on, macOS slides
+        // every window at that level away with the bar, which took the panel with it the
+        // moment the pointer left the status item. Menus survive that, so use their level.
+        panel.level = .popUpMenu
         panel.hidesOnDeactivate = false
         panel.isMovable = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
