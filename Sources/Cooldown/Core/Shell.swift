@@ -39,6 +39,7 @@ final class ShellEnvironment {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: shell)
         process.arguments = ["-l", "-c", "printf %s \"$PATH\""]
+        process.currentDirectoryURL = URL(fileURLWithPath: workDirectory)
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -56,6 +57,19 @@ final class ShellEnvironment {
         let loginEntries = loginPath.isEmpty ? [] : loginPath.split(separator: ":").map(String.init)
         return mergedPath(loginEntries + fallback.split(separator: ":").map(String.init) + bundledCLIDirectories())
     }
+
+    /// An empty folder of our own, where every CLI the app starts is started. They read
+    /// whatever folder they start in for project context, so they cannot start where
+    /// Finder put the app (the root of the disk), and starting them in the home folder
+    /// had Codex walk into ~/Music and ~/Documents, which made macOS ask whether Cooldown
+    /// may read Apple Music and Documents.
+    static let workDirectory: String = {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        let directory = base.appendingPathComponent("Cooldown/work", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.path
+    }()
 
     /// The entries in order, each kept the first time it appears.
     static func mergedPath(_ entries: [String]) -> String {
@@ -131,15 +145,12 @@ enum Shell {
         executable: String,
         arguments: [String],
         stdin: String? = nil,
-        timeout: TimeInterval = 20,
-        currentDirectory: String? = nil
+        timeout: TimeInterval = 20
     ) -> Result {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
-        if let currentDirectory {
-            process.currentDirectoryURL = URL(fileURLWithPath: currentDirectory)
-        }
+        process.currentDirectoryURL = URL(fileURLWithPath: ShellEnvironment.workDirectory)
 
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = ShellEnvironment.shared.path
@@ -216,8 +227,7 @@ extension Shell {
         executable: String,
         arguments: [String],
         stdin: String? = nil,
-        timeout: TimeInterval = 20,
-        currentDirectory: String? = nil
+        timeout: TimeInterval = 20
     ) async -> Result {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
@@ -226,8 +236,7 @@ extension Shell {
                         executable: executable,
                         arguments: arguments,
                         stdin: stdin,
-                        timeout: timeout,
-                        currentDirectory: currentDirectory
+                        timeout: timeout
                     )
                 )
             }

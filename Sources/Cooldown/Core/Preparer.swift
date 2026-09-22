@@ -22,8 +22,7 @@ enum Preparer {
         let result = await Shell.runAsync(
             executable: shell,
             arguments: ["-l", "-c", trimmed],
-            timeout: 120,
-            currentDirectory: startDirectory
+            timeout: 120
         )
 
         if let failure = result.launchFailure {
@@ -51,18 +50,6 @@ enum Preparer {
             detail: summarise(result.out),
             at: Date()
         )
-    }
-
-    /// An empty folder of our own for the commands to start in. The CLIs read whatever
-    /// folder they start in for project context, so they cannot start where Finder put
-    /// the app (the root of the disk), and starting them in the home folder had Codex
-    /// walk into ~/Music, which made macOS ask whether Cooldown may read Apple Music.
-    static var startDirectory: String {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        let directory = base.appendingPathComponent("Cooldown/start", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.path
     }
 
     private static func summarise(_ text: String) -> String {

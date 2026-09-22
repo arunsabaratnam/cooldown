@@ -126,6 +126,7 @@ enum LoginRunner {
             // `script` gives the tool a real terminal; the `stty` gives that terminal a
             // width, so long sign-in links are not wrapped mid-URL.
             process.arguments = ["-q", "/dev/null", "/bin/sh", "-c", "stty cols 200 rows 50 2>/dev/null; exec \"$@\"", "sh"] + command
+            process.currentDirectoryURL = URL(fileURLWithPath: ShellEnvironment.workDirectory)
 
             var environment = ProcessInfo.processInfo.environment
             environment["PATH"] = ShellEnvironment.shared.path
