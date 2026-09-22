@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// A GUI app launched from Finder inherits a bare PATH (`/usr/bin:/bin:/usr/sbin:/sbin`),
@@ -58,13 +59,34 @@ final class ShellEnvironment {
         return merged.joined(separator: ":")
     }
 
-    /// Absolute path of a CLI on the recovered PATH, or nil when it is not installed.
+    /// Absolute path of a CLI on the recovered PATH, or bundled inside a desktop app, or
+    /// nil when it is not installed anywhere we know to look.
     func locate(_ binary: String) -> String? {
         for directory in path.split(separator: ":") {
             let candidate = "\(directory)/\(binary)"
             if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
         }
-        return nil
+        return Self.bundledCopies(of: binary).first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    /// Some CLIs ship inside a desktop app, for people who use the app and never installed
+    /// the CLI on its own. The ChatGPT app carries a full `codex` that reads the same
+    /// `~/.codex` sign-in, so it answers `app-server` just as the standalone one does.
+    private static func bundledCopies(of binary: String) -> [String] {
+        let apps: [(bundleID: String, fallbackPath: String, relative: String)]
+        switch binary {
+        case "codex":
+            apps = [
+                ("com.openai.chat", "/Applications/ChatGPT.app", "Contents/Resources/codex"),
+                ("com.openai.codex", "/Applications/Codex.app", "Contents/Resources/codex"),
+            ]
+        default:
+            return []
+        }
+        return apps.flatMap { app -> [String] in
+            let located = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID)?.path
+            return [located, app.fallbackPath].compactMap { $0 }.map { "\($0)/\(app.relative)" }
+        }
     }
 }
 
