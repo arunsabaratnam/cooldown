@@ -107,7 +107,7 @@ final class StatusItemController: NSObject {
         guard let button = item.button, let buttonWindow = button.window else { return }
         store.panelAppeared()
         let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-        fitPanel(anchoredTop: buttonFrame.minY - 6, centeredOn: buttonFrame.midX, screen: buttonWindow.screen)
+        fitPanel(anchoredTop: buttonFrame.minY - 6, leftEdge: buttonFrame.minX, screen: buttonWindow.screen)
         panel.makeKeyAndOrderFront(nil)
         setHighlighted(true)
 
@@ -144,12 +144,14 @@ final class StatusItemController: NSObject {
         DispatchQueue.main.async { button.highlight(highlighted) }
     }
 
-    /// Sizes the panel to its content, keeping its top edge where it is.
-    private func fitPanel(anchoredTop top: CGFloat, centeredOn midX: CGFloat? = nil, screen: NSScreen? = nil) {
+    /// Sizes the panel to its content, keeping its top edge where it is. A new left edge
+    /// lines it up with the status item the way a menu does, sliding left only when it
+    /// would run off the right side of the screen.
+    private func fitPanel(anchoredTop top: CGFloat, leftEdge: CGFloat? = nil, screen: NSScreen? = nil) {
         hosting.layoutSubtreeIfNeeded()
         let size = hosting.fittingSize
         let visible = (screen ?? panel.screen ?? NSScreen.main)?.visibleFrame ?? .zero
-        var x = midX.map { $0 - size.width / 2 } ?? panel.frame.minX
+        var x = leftEdge ?? panel.frame.minX
         x = min(max(x, visible.minX + 8), visible.maxX - size.width - 8)
         panel.setFrame(NSRect(x: x, y: top - size.height, width: size.width, height: size.height), display: true)
     }
