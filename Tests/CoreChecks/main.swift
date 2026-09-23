@@ -50,6 +50,40 @@ print("ShellEnvironment.mergedPath")
 check(ShellEnvironment.mergedPath(["/a", "/b", "/a", "", "/c"]) == "/a:/b:/c", "keeps each directory once, in order, and drops empties")
 check(ShellEnvironment.mergedPath([]) == "", "empty in, empty out")
 
+print("ShellEnvironment.withoutProtectedFolders")
+let home = "/Users/me"
+check(
+    ShellEnvironment.withoutProtectedFolders(
+        ["/Users/me/.local/bin", "/Users/me/Documents/sdk/bin", "/opt/homebrew/bin", "/Users/me/Desktop", "/Users/me/Downloads/x", "/Users/me/Pictures/y", "/Users/me/Music/z", "/Users/me/Movies/w", "/Users/me/Documentsx/bin"],
+        home: home
+    ) == ["/Users/me/.local/bin", "/opt/homebrew/bin", "/Users/me/Documentsx/bin"],
+    "drops every entry inside a folder macOS asks about, and only those"
+)
+check(ShellEnvironment.withoutProtectedFolders(["/Users/other/Documents/bin"], home: home) == ["/Users/other/Documents/bin"], "another user's folders are left alone")
+
+print("ShellEnvironment.childEnvironment")
+let child = ShellEnvironment.childEnvironment(
+    inheriting: ["PWD": "/Users/me/Documents/proj", "OLDPWD": "/Users/me/Desktop", "PATH": "/stale", "HOME": "/Users/me"],
+    path: "/fresh",
+    workDirectory: "/work"
+)
+check(child["PWD"] == "/work", "PWD is the work folder, not wherever the app was launched from")
+check(child["OLDPWD"] == nil, "OLDPWD is dropped")
+check(child["PATH"] == "/fresh", "PATH is the recovered one")
+check(child["HOME"] == "/Users/me", "everything else is inherited")
+check(child["TERM"] == "dumb" && child["NO_COLOR"] == "1", "no TUI, no colour")
+
+print("ShellEnvironment.markAsRepository")
+let repoDir = FileManager.default.temporaryDirectory.appendingPathComponent("cooldown-repo-\(UUID().uuidString)")
+try? FileManager.default.createDirectory(at: repoDir, withIntermediateDirectories: true)
+ShellEnvironment.markAsRepository(repoDir.path)
+ShellEnvironment.markAsRepository(repoDir.path)
+var isDir: ObjCBool = false
+check(FileManager.default.fileExists(atPath: repoDir.appendingPathComponent(".git/objects").path, isDirectory: &isDir) && isDir.boolValue, "has an objects folder")
+check(FileManager.default.fileExists(atPath: repoDir.appendingPathComponent(".git/refs").path, isDirectory: &isDir) && isDir.boolValue, "has a refs folder")
+check((try? String(contentsOf: repoDir.appendingPathComponent(".git/HEAD"), encoding: .utf8)) == "ref: refs/heads/main\n", "HEAD points at main, and marking twice is harmless")
+try? FileManager.default.removeItem(at: repoDir)
+
 print("Settings.prepareCommand")
 var settings = Settings()
 check(settings.prepareCommand(for: .codex).contains("--skip-git-repo-check"), "the Codex default skips the git repo check")

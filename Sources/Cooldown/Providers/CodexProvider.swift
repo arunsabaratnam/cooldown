@@ -259,11 +259,7 @@ enum StdioRPC {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.currentDirectoryURL = URL(fileURLWithPath: ShellEnvironment.workDirectory)
-        var environment = ProcessInfo.processInfo.environment
-        environment["PATH"] = ShellEnvironment.shared.path
-        environment["TERM"] = "dumb"
-        environment["NO_COLOR"] = "1"
-        process.environment = environment
+        process.environment = ShellEnvironment.childEnvironment()
 
         let outPipe = Pipe()
         let inPipe = Pipe()

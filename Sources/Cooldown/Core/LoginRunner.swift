@@ -128,12 +128,10 @@ enum LoginRunner {
             process.arguments = ["-q", "/dev/null", "/bin/sh", "-c", "stty cols 200 rows 50 2>/dev/null; exec \"$@\"", "sh"] + command
             process.currentDirectoryURL = URL(fileURLWithPath: ShellEnvironment.workDirectory)
 
-            var environment = ProcessInfo.processInfo.environment
-            environment["PATH"] = ShellEnvironment.shared.path
+            var environment = ShellEnvironment.childEnvironment()
             environment["TERM"] = "xterm-256color"
             environment["COLUMNS"] = "200"
             environment["LINES"] = "50"
-            environment["NO_COLOR"] = "1"
             process.environment = environment
 
             let outPipe = Pipe()

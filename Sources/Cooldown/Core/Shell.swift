@@ -40,6 +40,9 @@ final class ShellEnvironment {
         process.executableURL = URL(fileURLWithPath: shell)
         process.arguments = ["-l", "-c", "printf %s \"$PATH\""]
         process.currentDirectoryURL = URL(fileURLWithPath: workDirectory)
+        // The cached path does not exist yet; this shell starts from the bare one and
+        // reads its profile to fill it in.
+        process.environment = childEnvironment(path: fallback)
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -55,7 +58,40 @@ final class ShellEnvironment {
         // Union of both, so a login shell that trims things still leaves us the usual
         // suspects, then the app bundles last, so a real install always wins over one.
         let loginEntries = loginPath.isEmpty ? [] : loginPath.split(separator: ":").map(String.init)
-        return mergedPath(loginEntries + fallback.split(separator: ":").map(String.init) + bundledCLIDirectories())
+        let entries = loginEntries + fallback.split(separator: ":").map(String.init) + bundledCLIDirectories()
+        return mergedPath(withoutProtectedFolders(entries, home: NSHomeDirectory()))
+    }
+
+    /// The folders macOS guards with a "Cooldown would like to access…" dialog. A PATH
+    /// entry inside one (a Flutter SDK kept in ~/Documents, say) is dropped, because a
+    /// shell looking for a command it cannot find opens every PATH folder, and each of
+    /// these it opens is a dialog.
+    static let protectedFolders = ["Documents", "Desktop", "Downloads", "Pictures", "Music", "Movies"]
+
+    static func withoutProtectedFolders(_ entries: [String], home: String) -> [String] {
+        let roots = protectedFolders.map { "\(home)/\($0)" }
+        return entries.filter { entry in
+            !roots.contains { entry == $0 || entry.hasPrefix($0 + "/") }
+        }
+    }
+
+    /// The environment every process the app starts gets. Everything is inherited except
+    /// what would point a child at the wrong folder: the app launched from a terminal
+    /// inherits that terminal's PWD, and zsh checks that folder as it starts, which is a
+    /// dialog when it was ~/Documents/something.
+    static func childEnvironment(
+        inheriting base: [String: String] = ProcessInfo.processInfo.environment,
+        path: String? = nil,
+        workDirectory: String = ShellEnvironment.workDirectory
+    ) -> [String: String] {
+        var environment = base
+        environment["PATH"] = path ?? ShellEnvironment.shared.path
+        environment["PWD"] = workDirectory
+        environment.removeValue(forKey: "OLDPWD")
+        // Keep the CLIs from trying to draw a TUI at us.
+        environment["TERM"] = "dumb"
+        environment["NO_COLOR"] = "1"
+        return environment
     }
 
     /// An empty folder of our own, where every CLI the app starts is started. They read
@@ -63,13 +99,36 @@ final class ShellEnvironment {
     /// Finder put the app (the root of the disk), and starting them in the home folder
     /// had Codex walk into ~/Music and ~/Documents, which made macOS ask whether Cooldown
     /// may read Apple Music and Documents.
+    ///
+    /// The folder is also its own (empty) git repository. Claude and Codex both run git
+    /// where they start, and git looks upward for the nearest repository: when the home
+    /// folder is one (people keep dotfiles that way), `git status` from anywhere under it
+    /// walks all of home, and macOS asks about Photos, Music, Desktop and Downloads in
+    /// turn. A repository right here is where that search stops.
     static let workDirectory: String = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         let directory = base.appendingPathComponent("Cooldown/work", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        markAsRepository(directory.path)
         return directory.path
     }()
+
+    /// Lays down the least git needs to call a folder a repository: a HEAD, an objects
+    /// folder and a refs folder. Written by hand rather than with `git init`, so it works
+    /// on a Mac with no git installed and never triggers the "install the command line
+    /// tools?" dialog that /usr/bin/git puts up. Harmless to repeat.
+    static func markAsRepository(_ directory: String) {
+        let git = URL(fileURLWithPath: directory).appendingPathComponent(".git", isDirectory: true)
+        let files = FileManager.default
+        for name in ["objects", "refs"] {
+            try? files.createDirectory(at: git.appendingPathComponent(name), withIntermediateDirectories: true)
+        }
+        let head = git.appendingPathComponent("HEAD")
+        if !files.fileExists(atPath: head.path) {
+            try? "ref: refs/heads/main\n".write(to: head, atomically: true, encoding: .utf8)
+        }
+    }
 
     /// The entries in order, each kept the first time it appears.
     static func mergedPath(_ entries: [String]) -> String {
@@ -151,13 +210,7 @@ enum Shell {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.currentDirectoryURL = URL(fileURLWithPath: ShellEnvironment.workDirectory)
-
-        var environment = ProcessInfo.processInfo.environment
-        environment["PATH"] = ShellEnvironment.shared.path
-        // Keep the CLIs from trying to draw a TUI at us.
-        environment["TERM"] = "dumb"
-        environment["NO_COLOR"] = "1"
-        process.environment = environment
+        process.environment = ShellEnvironment.childEnvironment()
 
         let outPipe = Pipe()
         let errPipe = Pipe()
