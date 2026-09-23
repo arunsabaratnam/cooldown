@@ -20,6 +20,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = StatusItemController(store: UsageStore())
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Quitting from the panel would otherwise leave the menu bar held open.
+        MenuBarHold.release()
+    }
 }
 
 /// The menu bar icon and the panel it opens.
@@ -27,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// This used to be a SwiftUI `MenuBarExtra`, but that window closes whenever the menu bar
 /// does, which with "Automatically hide and show the menu bar" turned on means the moment
 /// the pointer drifts down. This panel stays until you click the icon again, click
-/// somewhere else, or press Esc.
+/// somewhere else, or press Esc, and `MenuBarHold` keeps the bar up with it.
 @MainActor
 final class StatusItemController: NSObject {
     static weak var shared: StatusItemController?
@@ -110,6 +115,7 @@ final class StatusItemController: NSObject {
         fitPanel(anchoredTop: buttonFrame.minY - 6, leftEdge: buttonFrame.minX, screen: buttonWindow.screen)
         panel.makeKeyAndOrderFront(nil)
         setHighlighted(true)
+        MenuBarHold.hold(on: buttonWindow.screen)
 
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in self?.hidePanel() }
@@ -125,6 +131,7 @@ final class StatusItemController: NSObject {
 
     func hidePanel() {
         guard panel.isVisible else { return }
+        MenuBarHold.release()
         panel.orderOut(nil)
         setHighlighted(false)
         store.panelDisappeared()
