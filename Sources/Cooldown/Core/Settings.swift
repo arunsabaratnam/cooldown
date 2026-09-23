@@ -83,17 +83,23 @@ struct Settings: Codable, Equatable {
     var notifyOnReset: Bool = false
     var launchAtLogin: Bool = false
 
-    /// Codex refuses to run outside a git repository unless told not to check, and the
-    /// app starts these from the home folder, which is rarely one.
+    /// One throwaway prompt is all it takes to start the window, so each goes to the
+    /// cheapest model its provider offers, at the least reasoning: it spends the least
+    /// quota and finishes soonest. Codex refuses to run outside a git repository unless
+    /// told not to check, and the app's work folder is only a bare one.
     static let defaultPrepareCommands: [ProviderID: String] = [
-        .claude: #"claude -p "reply with ok""#,
-        .codex: #"codex exec --skip-git-repo-check "reply with ok""#,
+        .claude: #"claude -p --model haiku "reply with ok""#,
+        .codex: #"codex exec --skip-git-repo-check -m gpt-6-luna -c model_reasoning_effort=low "reply with ok""#,
     ]
 
     /// Defaults from earlier versions. A saved command that still matches one of these
     /// was never edited by hand, so it is read as the current default instead.
     static let outdatedPrepareCommands: [ProviderID: [String]] = [
-        .codex: [#"codex exec "reply with ok""#],
+        .claude: [#"claude -p "reply with ok""#],
+        .codex: [
+            #"codex exec "reply with ok""#,
+            #"codex exec --skip-git-repo-check "reply with ok""#,
+        ],
     ]
 
     static let lowThresholdChoices = [10, 20, 30, 40]

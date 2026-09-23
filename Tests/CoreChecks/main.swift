@@ -87,8 +87,14 @@ try? FileManager.default.removeItem(at: repoDir)
 print("Settings.prepareCommand")
 var settings = Settings()
 check(settings.prepareCommand(for: .codex).contains("--skip-git-repo-check"), "the Codex default skips the git repo check")
+check(settings.prepareCommand(for: .codex).contains("-m gpt-6-luna") && settings.prepareCommand(for: .codex).contains("model_reasoning_effort=low"), "the Codex default asks for the light model at low reasoning")
+check(settings.prepareCommand(for: .claude).contains("--model haiku"), "the Claude default asks for Haiku")
 settings.prepareCommands[.codex] = #"codex exec "reply with ok""#
 check(settings.prepareCommand(for: .codex) == Settings.defaultPrepareCommands[.codex], "an older default saved to disk reads as the current one")
+settings.prepareCommands[.codex] = #"codex exec --skip-git-repo-check "reply with ok""#
+check(settings.prepareCommand(for: .codex) == Settings.defaultPrepareCommands[.codex], "so does the default before the model was chosen")
+settings.prepareCommands[.claude] = #"claude -p "reply with ok""#
+check(settings.prepareCommand(for: .claude) == Settings.defaultPrepareCommands[.claude], "the old Claude default reads as the current one too")
 settings.prepareCommands[.codex] = "codex exec --model o3 hi"
 check(settings.prepareCommand(for: .codex) == "codex exec --model o3 hi", "a hand-edited command is left alone")
 
