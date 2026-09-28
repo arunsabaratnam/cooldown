@@ -1,11 +1,15 @@
 import SwiftUI
 
 enum ThemeID: String, CaseIterable, Identifiable, Codable {
-    case glacier, ember, matcha, midnight, dusk, mono
+    case glacier, ember, matcha, midnight, dusk, mono, glass
 
     var id: String { rawValue }
 
-    var theme: Theme {
+    /// Glass is the one theme without a fixed mode: this is its light face. The panel
+    /// asks for the right one through `Settings.activeTheme(systemIsDark:)`.
+    var theme: Theme { theme(systemIsDark: false) }
+
+    func theme(systemIsDark: Bool) -> Theme {
         switch self {
         case .glacier:
             return Theme(id: self, name: "Glacier", isDark: false,
@@ -31,6 +35,19 @@ enum ThemeID: String, CaseIterable, Identifiable, Codable {
             return Theme(id: self, name: "Mono", isDark: false,
                          background: 0xFFFFFF, card: 0xF2F2F2, text: 0x111111, secondary: 0x5F5F5F,
                          accent: 0x111111, button: 0x111111, track: 0xDEDEDE, hero: 0xF2F2F2, heroText: 0x333333)
+        case .glass:
+            // The panel itself is Liquid Glass, so everything laid on it is a wash of
+            // white or black rather than a solid colour, and the accent is the Mac's own.
+            let accent = Color(nsColor: .controlAccentColor)
+            return systemIsDark
+                ? Theme(id: self, name: "Glass", isDark: true, isGlass: true,
+                        background: .clear, card: .white.opacity(0.08), text: Color(hex: 0xF5F5F7),
+                        secondary: Color(hex: 0xA8A8B0), accent: accent, button: accent,
+                        track: .white.opacity(0.16), hero: .white.opacity(0.10), heroText: Color(hex: 0xF5F5F7))
+                : Theme(id: self, name: "Glass", isDark: false, isGlass: true,
+                        background: .clear, card: .white.opacity(0.45), text: Color(hex: 0x1D1D1F),
+                        secondary: Color(hex: 0x55555C), accent: accent, button: accent,
+                        track: .black.opacity(0.10), hero: .white.opacity(0.55), heroText: Color(hex: 0x1D1D1F))
         }
     }
 }
@@ -41,6 +58,8 @@ struct Theme: Equatable {
     let id: ThemeID
     let name: String
     let isDark: Bool
+    /// Drawn on Liquid Glass instead of `background`, which is then clear.
+    let isGlass: Bool
     let background: Color
     let card: Color
     let text: Color
@@ -54,18 +73,28 @@ struct Theme: Equatable {
     init(id: ThemeID, name: String, isDark: Bool,
          background: UInt32, card: UInt32, text: UInt32, secondary: UInt32,
          accent: UInt32, button: UInt32, track: UInt32, hero: UInt32, heroText: UInt32) {
+        self.init(id: id, name: name, isDark: isDark, isGlass: false,
+                  background: Color(hex: background), card: Color(hex: card), text: Color(hex: text),
+                  secondary: Color(hex: secondary), accent: Color(hex: accent), button: Color(hex: button),
+                  track: Color(hex: track), hero: Color(hex: hero), heroText: Color(hex: heroText))
+    }
+
+    init(id: ThemeID, name: String, isDark: Bool, isGlass: Bool,
+         background: Color, card: Color, text: Color, secondary: Color,
+         accent: Color, button: Color, track: Color, hero: Color, heroText: Color) {
         self.id = id
         self.name = name
         self.isDark = isDark
-        self.background = Color(hex: background)
-        self.card = Color(hex: card)
-        self.text = Color(hex: text)
-        self.secondary = Color(hex: secondary)
-        self.accent = Color(hex: accent)
-        self.button = Color(hex: button)
-        self.track = Color(hex: track)
-        self.hero = Color(hex: hero)
-        self.heroText = Color(hex: heroText)
+        self.isGlass = isGlass
+        self.background = background
+        self.card = card
+        self.text = text
+        self.secondary = secondary
+        self.accent = accent
+        self.button = button
+        self.track = track
+        self.hero = hero
+        self.heroText = heroText
     }
 
     static let warning = Color(hex: 0xE8930C)
@@ -116,6 +145,6 @@ extension EnvironmentValues {
 extension Settings {
     /// The theme to draw with right now, given whether macOS is in dark mode.
     func activeTheme(systemIsDark: Bool) -> Theme {
-        (followSystemDarkMode && systemIsDark ? darkTheme : theme).theme
+        (followSystemDarkMode && systemIsDark ? darkTheme : theme).theme(systemIsDark: systemIsDark)
     }
 }

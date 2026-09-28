@@ -109,3 +109,18 @@ struct LowBadge: View {
             .background(Theme.warningFill, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
 }
+
+extension View {
+    /// The theme's backdrop in `shape`: its solid colour, or for Glass, Liquid Glass on
+    /// macOS 26 and the nearest material before it.
+    @ViewBuilder
+    func themeBackground(_ theme: Theme, in shape: some Shape) -> some View {
+        if !theme.isGlass {
+            background(theme.background, in: shape)
+        } else if #available(macOS 26, *) {
+            glassEffect(.regular, in: shape)
+        } else {
+            background(.regularMaterial, in: shape)
+        }
+    }
+}

@@ -26,7 +26,7 @@ struct MenuContentView: View {
             .padding(.bottom, 10)
         }
         .frame(width: 352)
-        .background(theme.background)
+        .themeBackground(theme, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .foregroundStyle(theme.text)
         .environment(\.theme, theme)
         .environment(\.density, store.settings.density)

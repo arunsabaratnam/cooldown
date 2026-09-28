@@ -231,6 +231,7 @@ private struct GeneralPane: View {
 
 private struct AppearancePane: View {
     @ObservedObject var store: UsageStore
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -238,9 +239,9 @@ private struct AppearancePane: View {
                 Text("Theme")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 14) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 14) {
                     ForEach(ThemeID.allCases) { id in
-                        ThemeTile(theme: id.theme, selected: store.settings.theme == id) {
+                        ThemeTile(theme: id.theme(systemIsDark: colorScheme == .dark), selected: store.settings.theme == id) {
                             store.settings.theme = id
                         }
                     }
@@ -308,7 +309,7 @@ private struct ThemeTile: View {
                 }
                 .padding(.horizontal, 12)
                 .frame(height: 64)
-                .background(theme.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .themeBackground(theme, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.black.opacity(0.1)))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)

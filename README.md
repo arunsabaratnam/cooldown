@@ -28,7 +28,7 @@ starts the 5-hour cooldown early so it is already running when you get to work. 
 button is live only while the 5-hour window is still full, since there is nothing to
 start once the clock is running.
 
-There is also a Classic layout, a card of bars for each provider, and six themes.
+There is also a Classic layout, a card of bars for each provider, and seven themes, one of them Liquid Glass.
 
 <p align="center">
   <img src="assets/panel-rings.png" alt="The Cooldown panel in the Rings layout: a big ring for the Codex 5-hour window, today's 5-hour timelines, and the weekly quota left for Claude and Codex" width="352">
