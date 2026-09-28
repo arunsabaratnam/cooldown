@@ -157,19 +157,59 @@ final class ShellEnvironment {
     ///
     /// Where inside the app it sits moves between releases: ChatGPT 26.924 moved it from
     /// Resources to Resources/codex-cli/bin, and the app now answers to com.openai.codex.
+    /// The known places are tried first; when none has it, the app's Resources are
+    /// searched, so the next move finds it without a new build.
     private static func bundledCLIDirectories() -> [String] {
         let places = ["Contents/Resources/codex-cli/bin", "Contents/Resources"]
-        let apps: [(bundleID: String, fallbackPath: String, binary: String)] = [
-            ("com.openai.chat", "/Applications/ChatGPT.app", "codex"),
-            ("com.openai.codex", "/Applications/ChatGPT.app", "codex"),
-            ("com.openai.codex", "/Applications/Codex.app", "codex"),
+        return installedCLIBundlingApps().flatMap { root -> [String] in
+            let known = places.map { "\(root)/\($0)" }
+                .filter { FileManager.default.isExecutableFile(atPath: "\($0)/codex") }
+            if !known.isEmpty { return known }
+            guard let found = findExecutable(named: "codex", under: "\(root)/Contents/Resources") else { return [] }
+            return [(found as NSString).deletingLastPathComponent]
+        }
+    }
+
+    /// The installed desktop apps known to carry a `codex`, whether or not one can be
+    /// found in them, each once.
+    static func installedCLIBundlingApps() -> [String] {
+        let apps: [(bundleID: String, fallbackPath: String)] = [
+            ("com.openai.chat", "/Applications/ChatGPT.app"),
+            ("com.openai.codex", "/Applications/ChatGPT.app"),
+            ("com.openai.codex", "/Applications/Codex.app"),
         ]
-        return apps.flatMap { app -> [String] in
+        let candidates = apps.flatMap { app -> [String] in
             let located = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID)?.path
             return [located, app.fallbackPath].compactMap { $0 }
-                .flatMap { root in places.map { "\(root)/\($0)" } }
-                .filter { FileManager.default.isExecutableFile(atPath: "\($0)/\(app.binary)") }
         }
+        var isDirectory: ObjCBool = false
+        return mergedPath(candidates.filter {
+            FileManager.default.fileExists(atPath: $0, isDirectory: &isDirectory) && isDirectory.boolValue
+        }).split(separator: ":").map(String.init)
+    }
+
+    /// The shallowest executable called `name` under `root`, looking at most `maxDepth`
+    /// folders down, or nil. Breadth first and sorted, so the same tree always gives the
+    /// same answer; symbolic links are not followed into, so a link loop cannot trap it.
+    static func findExecutable(named name: String, under root: String, maxDepth: Int = 4) -> String? {
+        let files = FileManager.default
+        var level = [root]
+        for _ in 0..<maxDepth {
+            var next: [String] = []
+            for folder in level {
+                for entry in ((try? files.contentsOfDirectory(atPath: folder)) ?? []).sorted() {
+                    let path = "\(folder)/\(entry)"
+                    // Not following links: this describes the link itself.
+                    let type = (try? files.attributesOfItem(atPath: path))?[.type] as? FileAttributeType
+                    if entry == name, type != .typeDirectory, files.isExecutableFile(atPath: path) {
+                        return path
+                    }
+                    if type == .typeDirectory { next.append(path) }
+                }
+            }
+            level = next
+        }
+        return nil
     }
 }
 

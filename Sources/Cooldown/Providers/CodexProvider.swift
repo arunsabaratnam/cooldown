@@ -25,6 +25,10 @@ struct CodexProvider: UsageProvider {
             case .failure(let reason):
                 reasons.append(reason)
             }
+        } else if let app = ShellEnvironment.installedCLIBundlingApps().first {
+            // The app is there but its codex is not where we look: an update moved it.
+            let name = ((app as NSString).lastPathComponent as NSString).deletingPathExtension
+            reasons.append("\(name) is installed but its codex was not found inside it, so an update may have moved it")
         } else {
             reasons.append("codex is not on the PATH the app can see")
         }

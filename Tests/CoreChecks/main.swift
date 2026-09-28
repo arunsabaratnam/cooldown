@@ -61,6 +61,25 @@ check(
 )
 check(ShellEnvironment.withoutProtectedFolders(["/Users/other/Documents/bin"], home: home) == ["/Users/other/Documents/bin"], "another user's folders are left alone")
 
+print("ShellEnvironment.findExecutable")
+let appDir = FileManager.default.temporaryDirectory.appendingPathComponent("cooldown-app-\(UUID().uuidString)")
+func makeFile(_ relative: String, executable: Bool) {
+    let url = appDir.appendingPathComponent(relative)
+    try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    FileManager.default.createFile(atPath: url.path, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: executable ? 0o755 : 0o644])
+}
+makeFile("cli/bin/codex", executable: true)
+makeFile("cli/Inner.app/Contents/MacOS/codex", executable: true)
+makeFile("sounds/codex", executable: false)
+try? FileManager.default.createSymbolicLink(atPath: appDir.appendingPathComponent("cli/loop").path, withDestinationPath: appDir.path)
+check(ShellEnvironment.findExecutable(named: "codex", under: appDir.path) == appDir.appendingPathComponent("cli/bin/codex").path, "finds the shallowest executable, not a plain file of the same name")
+check(ShellEnvironment.findExecutable(named: "codex", under: appDir.path, maxDepth: 2) == nil, "looks no deeper than asked")
+try? FileManager.default.removeItem(at: appDir.appendingPathComponent("cli/bin"))
+check(ShellEnvironment.findExecutable(named: "codex", under: appDir.path) == nil, "the deeper one is past the default depth, and the link loop is not followed")
+check(ShellEnvironment.findExecutable(named: "codex", under: appDir.path, maxDepth: 5) == appDir.appendingPathComponent("cli/Inner.app/Contents/MacOS/codex").path, "and found when allowed that deep")
+check(ShellEnvironment.findExecutable(named: "codex", under: "/nonexistent-\(UUID().uuidString)") == nil, "a missing folder is nil, not a crash")
+try? FileManager.default.removeItem(at: appDir)
+
 print("ShellEnvironment.childEnvironment")
 let child = ShellEnvironment.childEnvironment(
     inheriting: ["PWD": "/Users/me/Documents/proj", "OLDPWD": "/Users/me/Desktop", "PATH": "/stale", "HOME": "/Users/me"],
