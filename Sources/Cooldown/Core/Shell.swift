@@ -154,15 +154,20 @@ final class ShellEnvironment {
     /// every process the app starts can find them too. The start command runs in the
     /// user's login shell, and `codex exec …` there was failing with "command not found"
     /// on a Mac whose only codex was the one inside ChatGPT.app.
+    ///
+    /// Where inside the app it sits moves between releases: ChatGPT 26.924 moved it from
+    /// Resources to Resources/codex-cli/bin, and the app now answers to com.openai.codex.
     private static func bundledCLIDirectories() -> [String] {
-        let apps: [(bundleID: String, fallbackPath: String, relative: String, binary: String)] = [
-            ("com.openai.chat", "/Applications/ChatGPT.app", "Contents/Resources", "codex"),
-            ("com.openai.codex", "/Applications/Codex.app", "Contents/Resources", "codex"),
+        let places = ["Contents/Resources/codex-cli/bin", "Contents/Resources"]
+        let apps: [(bundleID: String, fallbackPath: String, binary: String)] = [
+            ("com.openai.chat", "/Applications/ChatGPT.app", "codex"),
+            ("com.openai.codex", "/Applications/ChatGPT.app", "codex"),
+            ("com.openai.codex", "/Applications/Codex.app", "codex"),
         ]
         return apps.flatMap { app -> [String] in
             let located = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID)?.path
             return [located, app.fallbackPath].compactMap { $0 }
-                .map { "\($0)/\(app.relative)" }
+                .flatMap { root in places.map { "\(root)/\($0)" } }
                 .filter { FileManager.default.isExecutableFile(atPath: "\($0)/\(app.binary)") }
         }
     }
